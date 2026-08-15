@@ -275,6 +275,20 @@ function App() {
     return documents.filter((doc) => `${doc.name} ${doc.content}`.toLowerCase().includes(normalized))
   }, [documents, query])
 
+  /* A tiling compositor resizes the window immediately after it is created, so
+     the width at mount is not the width the user gets. Re-evaluate whenever the
+     outline loses its own column and fold it away rather than leaving it
+     overlaying the document. */
+  useEffect(() => {
+    const compact = window.matchMedia('(max-width: 1120px)')
+    const sync = () => {
+      if (compact.matches) setOutlineOpen(false)
+    }
+    sync()
+    compact.addEventListener('change', sync)
+    return () => compact.removeEventListener('change', sync)
+  }, [])
+
   /* Follow the active Omarchy theme. Tokens arrive as CSS custom properties and
      are applied to :root, so a theme switch repaints without a reload. */
   useEffect(() => {
