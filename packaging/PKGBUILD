@@ -1,22 +1,5 @@
 # Maintainer: Mark Relph
 #
-# NOTE (source= placeholder): This repository has no git remote and no
-# tagged release yet (it was only just initialized locally). The source=
-# array below is a PLACEHOLDER that assumes a future GitHub-style tag
-# tarball. Before this PKGBUILD can actually be built by makepkg or
-# published to the AUR:
-#   1. Push the repository to a real remote and replace REPLACE_ME_URL
-#      below (in both `url` and `source`) with that remote's address.
-#   2. Cut a v${pkgver} tag (or point source= at a specific commit).
-#   3. Regenerate checksums with `updpkgsums` (this replaces the
-#      sha256sums=('SKIP') placeholder with a real hash -- SKIP must never
-#      ship in a published AUR PKGBUILD).
-#
-# NOTE (lockfile): `pnpm install --frozen-lockfile` requires pnpm-lock.yaml to
-# match package.json. The electron devDependency was raised to ^43 to match the
-# system runtime, so the lockfile must be regenerated (`pnpm install`, which
-# needs network) and committed before this builds.
-#
 # NOTE (electron binary name): `depends=('electron')` assumes the system
 # `electron` package/meta-package installs a binary literally named
 # `electron` on PATH (true today: Arch's extra/electron meta-package
@@ -32,12 +15,12 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc="A calm, local-first Markdown reader and editor for Linux"
 arch=('any')
-url="https://REPLACE_ME_URL/inkwell"
+url="https://github.com/mrelph/inkwell"
 license=('MIT')
 depends=('electron')
 makedepends=('pnpm' 'nodejs')
-source=("${pkgname}-${pkgver}.tar.gz::https://REPLACE_ME_URL/inkwell/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('SKIP') # PLACEHOLDER -- replace via `updpkgsums` once source= points at a real tarball
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
 
 build() {
   cd "${srcdir}/${pkgname}-${pkgver}"
