@@ -1,0 +1,47 @@
+{
+  "name": "inkwell",
+  "version": "0.1.0",
+  "description": "A calm, local-first Markdown reader and editor for Linux.",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k \"tsc -p tsconfig.electron.json --watch\" \"vite --host 127.0.0.1\" \"wait-on tcp:5173 file:dist-electron/main.js && VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
+    "build": "tsc -p tsconfig.electron.json && vite build",
+    "preview": "pnpm build && electron .",
+    "package:linux": "pnpm build && electron-builder --linux AppImage"
+  },
+  "build": {
+    "appId": "com.inkwell.desktop",
+    "productName": "Inkwell",
+    "icon": "build/icon.png",
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Office"
+    }
+  },
+  "dependencies": {
+    "@fontsource-variable/manrope": "^5.2.6",
+    "@fontsource/source-serif-4": "^5.2.6",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^10.0.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "wait-on": "^8.0.1"
+  }
+}

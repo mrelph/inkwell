@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-14T00:00:00.000Z",
+  "title": "Design System: Inkwell",
+  "extensions": {
+    "colorMeta": {
+      "ink": { "role": "neutral", "displayName": "Blue-Black Ink", "canonical": "#1c2b31", "tonalRamp": ["#132027", "#1c2b31", "#2d4045", "#506166", "#718087", "#a3afb2", "#d3dcda", "#f1f5f1"] },
+      "paper": { "role": "neutral", "displayName": "Editorial Paper", "canonical": "#fbf8f1", "tonalRamp": ["#403b35", "#685f53", "#918574", "#bcb1a1", "#d7cfc2", "#e8e1d5", "#f3eee5", "#fbf8f1"] },
+      "workbench": { "role": "neutral", "displayName": "Workbench Beige", "canonical": "#e8e1d5", "tonalRamp": ["#433d35", "#6d6458", "#978c7b", "#beb3a2", "#d5ccbf", "#e8e1d5", "#f2ede5", "#fbf8f1"] },
+      "line": { "role": "neutral", "displayName": "Warm Rule", "canonical": "#d7cfc2", "tonalRamp": ["#3d3933", "#625d54", "#898176", "#aea699", "#d7cfc2", "#e5ded3", "#f1ebe3", "#fbf8f1"] },
+      "teal-action": { "role": "primary", "displayName": "Working Teal", "canonical": "#1b6366", "tonalRamp": ["#102f32", "#15575a", "#1b6366", "#217276", "#399095", "#73b7b5", "#b6dcda", "#e5f3f0"] },
+      "teal-focus": { "role": "primary", "displayName": "Focused Teal", "canonical": "#167b81", "tonalRamp": ["#10393e", "#125d62", "#167b81", "#2c9698", "#63b6b5", "#9cd0cb", "#c9e8e1", "#eef9f5"] },
+      "amber-note": { "role": "secondary", "displayName": "Note Amber", "canonical": "#f2b86f", "tonalRamp": ["#563311", "#8b571f", "#bd7d35", "#dd9b4d", "#f2b86f", "#f7ce9c", "#fbe5c9", "#fff6e8"] },
+      "coral-file": { "role": "tertiary", "displayName": "Document Coral", "canonical": "#e56d40", "tonalRamp": ["#592818", "#8f3d24", "#bd5130", "#e56d40", "#ef926d", "#f6b89c", "#fbd8c9", "#fff0e9"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Editorial Display", "purpose": "First document headings and the reader's first glance." },
+      "body": { "displayName": "Long-form Reading", "purpose": "Prose, lists, callouts, and rendered Markdown." },
+      "label": { "displayName": "Utility Chrome", "purpose": "Navigation, controls, metadata, and status text." }
+    },
+    "shadows": [
+      { "name": "selected-item-lift", "value": "0 2px 7px rgba(69, 54, 34, .07)", "purpose": "Active document in the library." },
+      { "name": "action-lift", "value": "0 2px 5px rgba(24, 73, 74, .18)", "purpose": "Primary save action." },
+      { "name": "outline-overlay-lift", "value": "-12px 0 28px rgba(40, 35, 27, .13)", "purpose": "Compact outline overlay." }
+    ],
+    "motion": [
+      { "name": "state-transition", "value": "140ms ease", "purpose": "Compact hover and selected-state feedback for controls." },
+      { "name": "panel-fade", "value": "180ms ease", "purpose": "Sidebar and outline visibility changes without layout-property animation." }
+    ],
+    "breakpoints": [
+      { "name": "compact-desktop", "value": "1120px" },
+      { "name": "narrow-workspace", "value": "780px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Save Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Completes a local save from the document header.",
+      "html": "<button class=\"ds-save\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m5 12 4 4L19 6\"/></svg>Save</button>",
+      "css": ".ds-save { display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:0 10px; color:#f6f5ee; background:#1b6366; border:1px solid #15575a; border-radius:8px; box-shadow:0 2px 5px rgba(24,73,74,.18); font:730 11px Manrope, sans-serif; cursor:pointer; transition:background-color 140ms ease, transform 140ms ease; } .ds-save svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; } .ds-save:hover { background:#217276; transform:translateY(-1px); } .ds-save:focus-visible { outline:3px solid #167b81; outline-offset:2px; }"
+    },
+    {
+      "name": "New Note Button",
+      "kind": "button",
+      "refersTo": "button-new-note",
+      "description": "Starts a new unsaved local Markdown draft.",
+      "html": "<button class=\"ds-new-note\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M12 18v-6m-3 3h6\"/></svg>New note</button>",
+      "css": ".ds-new-note { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:34px; padding:0 10px; color:#10272c; background:#f2b86f; border:1px solid #da9c4e; border-radius:9px; box-shadow:0 1px 1px rgba(91,62,20,.12),0 4px 12px rgba(131,90,29,.09); font:760 12px Manrope, sans-serif; cursor:pointer; transition:background-color 140ms ease, transform 140ms ease; } .ds-new-note svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; } .ds-new-note:hover { background:#f7c27f; transform:translateY(-1px); } .ds-new-note:focus-visible { outline:3px solid #167b81; outline-offset:2px; }"
+    },
+    {
+      "name": "Document Search Field",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "Filters local documents without interrupting the workspace.",
+      "html": "<label class=\"ds-search\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"6\"/><path d=\"m20 20-4-4\"/></svg><input placeholder=\"Find in documents\" /></label>",
+      "css": ".ds-search { display:flex; align-items:center; gap:8px; min-height:36px; padding:0 9px; color:#81796e; background:rgba(255,253,248,.52); border:1px solid #d6ccbc; border-radius:9px; font:600 12px Manrope, sans-serif; } .ds-search svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; } .ds-search input { width:150px; min-width:0; padding:0; color:#263438; background:transparent; border:0; outline:0; font:inherit; } .ds-search:focus-within { background:#fffcf5; border-color:#69a4a0; box-shadow:0 0 0 3px rgba(22,123,129,.13); }"
+    },
+    {
+      "name": "Active Document Row",
+      "kind": "nav",
+      "refersTo": "document-list",
+      "description": "Current file in the local document library.",
+      "html": "<button class=\"ds-document active\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h6\"/></svg><span><strong>Welcome to Inkwell</strong><small>Sample</small></span></button>",
+      "css": ".ds-document { display:grid; grid-template-columns:18px minmax(0,1fr); gap:8px; align-items:start; width:230px; padding:9px 8px; color:#142b30; text-align:left; background:#f9f5ed; border:1px solid #d4caba; border-radius:9px; box-shadow:0 2px 7px rgba(69,54,34,.07); font-family:Manrope,sans-serif; cursor:pointer; } .ds-document svg { width:16px; margin-top:2px; fill:none; stroke:#d97742; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; } .ds-document strong,.ds-document small { display:block; } .ds-document strong { font-size:12px; line-height:1.35; } .ds-document small { margin-top:2px; color:#938a7d; font-size:10px; } .ds-document:focus-visible { outline:3px solid #167b81; outline-offset:2px; }"
+    },
+    {
+      "name": "Reading Callout",
+      "kind": "custom",
+      "refersTo": "reader-surface",
+      "description": "A single informative aside inside rendered Markdown.",
+      "html": "<blockquote class=\"ds-callout\">This is a sample document. Open a folder or a Markdown file to begin working with your own notes.</blockquote>",
+      "css": ".ds-callout { max-width:320px; margin:0; padding:17px 22px; color:#28585a; background:#e0efeb; border:1px solid #bcd9d1; border-radius:12px; font:400 18px/1.55 'Source Serif 4', Georgia, serif; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Editorial Worktable",
+    "overview": "Inkwell turns Markdown into a place for sustained reading and deliberate revision. The interface is a small worktable: a warm, softly layered frame holds a generous paper reading surface, with the source close at hand rather than hidden behind an application mode. It should feel considered and humane, never like a dashboard, browser tab, or generic code editor.\n\nThe visual hierarchy belongs to the document. A blue-black title bar, restrained navigation, and quiet utility panels establish location without competing with the page. Coral marks document identity, amber invites a new note, and teal is reserved for saved or selected action. The reading pane gets the largest type, calmest surface, and longest measure.",
+    "keyCharacteristics": [
+      "Editorial serif reading paired with precise, compact sans-serif controls.",
+      "Warm paper, darker ink, and low-contrast separators establish depth through tonal layers.",
+      "Three useful states—Read, Split, and Write—change the work surface without changing the product’s visual voice.",
+      "Icons remain thin-line Lucide symbols; color and shape carry meaning before decoration does."
+    ],
+    "rules": [
+      { "name": "Accent Rarity Rule", "body": "A screen should have one action color doing one job at a time. Keep teal, amber, and coral in compact, functional areas; broad content surfaces remain paper and ink.", "section": "colors" },
+      { "name": "Document Leads Rule", "body": "The reader’s serif hierarchy is always visually stronger than the application’s UI labels.", "section": "typography" },
+      { "name": "Paper-First Depth Rule", "body": "Use tonal changes and rules before adding a shadow. A shadow must explain elevation or interaction; it is never a decorative halo.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do give documents the largest type, clearest contrast, and most generous whitespace.",
+      "Do use paper-tone layering and hairline rules to establish regions before reaching for shadows.",
+      "Do use teal for completion and active interaction, amber for starting a note, and coral for document identity.",
+      "Do preserve clear keyboard focus, custom selection, caret, and scrollbar treatments as part of the interface.",
+      "Do keep file, folder, save, and mode controls immediately understandable with text or accessible labels."
+    ],
+    "donts": [
+      "Don't turn the reader into an analytics dashboard, a tiled card layout, or a generic code-editor clone.",
+      "Don't use gradient text, decorative glass, hard offset shadows, or broad accent-color panels.",
+      "Don't use monospace outside source editing, code, or measurements.",
+      "Don't replace the thin-line icon system with emoji or unrelated glyphs.",
+      "Don't offer a control at compact widths unless it remains visibly and functionally operable."
+    ]
+  }
+}
