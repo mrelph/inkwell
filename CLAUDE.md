@@ -134,6 +134,9 @@ model): `packaging/PKGBUILD`, `packaging/inkwell.desktop`,
 remote yet. `pnpm-lock.yaml` still needs regenerating after the Electron `^43`
 bump before `--frozen-lockfile` will succeed.
 
-Installing does not steal the `text/markdown` default handler (Omarchy ships
-`omawrite`); that is an opt-in `xdg-mime default` command, documented in the
-README.
+Installing *can* take over the `text/markdown` default even though nothing sets
+it deliberately: with no explicit user preference, the handler is resolved from
+`mimeinfo.cache` ordering, and `inkwell.desktop` sorts ahead of Omarchy's
+`omawrite.desktop`. Verified on a real install. Don't claim the association is
+purely opt-in — direct users to set it explicitly with `xdg-mime default`, as the
+README now does.

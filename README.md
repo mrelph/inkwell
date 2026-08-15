@@ -53,12 +53,22 @@ cd packaging
 makepkg -si
 ```
 
-To make Inkwell your default Markdown handler (this is deliberately not done
-automatically, since Omarchy ships its own handler):
+### Markdown file association
+
+The desktop entry registers `text/markdown`, which makes Inkwell a candidate
+handler. Be aware of what that means in practice: if you have no explicit
+preference set, the desktop resolves the default from `mimeinfo.cache` ordering,
+and `inkwell` sorts ahead of Omarchy's `omawrite` — so installing can quietly
+become your default `.md` handler.
+
+Set it explicitly either way rather than relying on that ordering:
 
 ```bash
-xdg-mime default inkwell.desktop text/markdown
+xdg-mime default inkwell.desktop text/markdown text/x-markdown   # choose Inkwell
+xdg-mime default omawrite.desktop text/markdown text/x-markdown  # keep Omawrite
 ```
+
+Check the current handler with `xdg-mime query default text/markdown`.
 
 ## Keyboard shortcuts
 
