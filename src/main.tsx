@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -28,7 +28,7 @@ import './styles.css'
 
 type ViewMode = 'read' | 'split' | 'write'
 
-type Document = {
+type MarkdownDoc = {
   id: string
   name: string
   content: string
@@ -36,9 +36,13 @@ type Document = {
   source?: string
   isSample?: boolean
   isDirty?: boolean
+  /** mtime Inkwell last saw on disk, used to detect an external edit. */
+  savedAt?: number
 }
 
-const seedDocuments: Document[] = [
+type Heading = { level: number; text: string; id: string }
+
+const seedDocuments: MarkdownDoc[] = [
   {
     id: 'welcome',
     name: 'Welcome to Inkwell.md',
@@ -59,7 +63,9 @@ Switch between a focused reading view, a clean writing view, or place them side 
 - **Open files** with \`Ctrl+O\`
 - **Open folders** with \`Ctrl+Shift+O\`
 - **Save** with \`Ctrl+S\`
-- Use the outline to move through longer documents
+- **New note** with \`Ctrl+N\`
+- Switch views with \`Ctrl+1\`, \`Ctrl+2\`, \`Ctrl+3\`
+- Toggle the library with \`Ctrl+B\` and the outline with \`Ctrl+\\\`
 
 ### Markdown that reads well
 
@@ -133,38 +139,105 @@ End a working note with the next possible move: a question, a source to check, o
 
 const clampTitle = (value: string) => value.replace(/\.(md|mdx|markdown)$/i, '')
 
-const getHeadings = (markdown: string) => {
-  let headingIndex = 0
-  return markdown
-    .split('\n')
-    .map((line) => {
-      const match = /^(#{1,3})\s+(.+)$/.exec(line)
-      return match ? { level: match[1].length, text: match[2].replace(/[*_`]/g, ''), id: `section-${headingIndex++}` } : null
-    })
-    .filter((item): item is { level: number; text: string; id: string } => Boolean(item))
+/* Heading anchors are derived from heading *text*, not from an ordinal. The
+   outline scanner and the renderer are two independent parsers, so an ordinal
+   scheme silently shifts every later anchor whenever they disagree (a `#` inside
+   a fenced block, a setext heading). A content slug keeps every other heading
+   correct even when one entry is missed. */
+const inlineToText = (value: string) =>
+  value
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[`*_~]/g, '')
+    .trim()
+
+const slugify = (value: string) => {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-|-$/g, '')
+  return slug || 'section'
+}
+
+const uniqueId = (counts: Map<string, number>, base: string) => {
+  const seen = counts.get(base) ?? 0
+  counts.set(base, seen + 1)
+  return seen === 0 ? base : `${base}-${seen}`
+}
+
+/* Fence- and setext-aware so the outline matches what the reader actually
+   renders. Levels 1-3 only, matching the outline's three indent levels. */
+const getHeadings = (markdown: string): Heading[] => {
+  const headings: Heading[] = []
+  const counts = new Map<string, number>()
+  const lines = markdown.split('\n')
+  let fence: string | null = null
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    const fenceEdge = /^\s{0,3}(`{3,}|~{3,})/.exec(line)
+    if (fenceEdge) {
+      const marker = fenceEdge[1][0]
+      if (!fence) fence = marker
+      else if (fence === marker) fence = null
+      continue
+    }
+    if (fence) continue
+
+    let level = 0
+    let raw = ''
+    const atx = /^\s{0,3}(#{1,3})\s+(.*)$/.exec(line)
+    if (atx) {
+      level = atx[1].length
+      raw = atx[2].replace(/\s+#+\s*$/, '')
+    } else {
+      const underline = lines[index + 1]
+      const isSetext = underline !== undefined && /^\s{0,3}(=+|-+)\s*$/.test(underline)
+      if (isSetext && line.trim() && !/^\s{0,3}#/.test(line)) {
+        level = underline.trim().startsWith('=') ? 1 : 2
+        raw = line
+      }
+    }
+
+    const text = inlineToText(raw)
+    if (!level || !text) continue
+    headings.push({ level, text, id: uniqueId(counts, slugify(text)) })
+  }
+
+  return headings
+}
+
+const childrenToText = (node: ReactNode): string => {
+  if (node === null || node === undefined || typeof node === 'boolean') return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(childrenToText).join('')
+  if (isValidElement(node)) return childrenToText((node.props as { children?: ReactNode }).children)
+  return ''
 }
 
 function Reader({ content }: { content: string }) {
-  const headingIndex = useRef(0)
-  headingIndex.current = 0
+  /* Reset per render so ids stay stable and StrictMode's double invocation
+     converges on the same result. */
+  const counts = new Map<string, number>()
+  const anchor = (level: 1 | 2 | 3 | 4 | 5 | 6) => ({ children }: { children?: ReactNode }) => {
+    const id = uniqueId(counts, slugify(inlineToText(childrenToText(children))))
+    const Tag = `h${level}` as const
+    return <Tag id={id}>{children}</Tag>
+  }
 
   return (
     <article className="markdown-prose">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          h1: ({ children }) => {
-            const id = `section-${headingIndex.current++}`
-            return <h1 id={id}>{children}</h1>
-          },
-          h2: ({ children }) => {
-            const id = `section-${headingIndex.current++}`
-            return <h2 id={id}>{children}</h2>
-          },
-          h3: ({ children }) => {
-            const id = `section-${headingIndex.current++}`
-            return <h3 id={id}>{children}</h3>
-          },
+          h1: anchor(1),
+          h2: anchor(2),
+          h3: anchor(3),
+          h4: anchor(4),
+          h5: anchor(5),
+          h6: anchor(6),
           a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer">{children}</a>
         }}
       >
@@ -180,12 +253,17 @@ function App() {
   const [view, setView] = useState<ViewMode>('split')
   const [query, setQuery] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [outlineOpen, setOutlineOpen] = useState(true)
+  /* Only open by default where the outline gets a real column. Below that it
+     overlays the canvas, and a tiled window should start on the document. */
+  const [outlineOpen, setOutlineOpen] = useState(
+    () => !window.matchMedia('(max-width: 1120px)').matches
+  )
   const [notice, setNotice] = useState('Sample document · unsaved')
   const [folderName, setFolderName] = useState('Sample documents')
   const editorRef = useRef<HTMLTextAreaElement>(null)
+  const draftSerial = useRef(0)
 
-  const activeDocument = documents.find((document) => document.id === activeId) ?? documents[0]
+  const activeDocument = documents.find((doc) => doc.id === activeId) ?? documents[0]
   const headings = useMemo(() => getHeadings(activeDocument.content), [activeDocument.content])
   const wordCount = useMemo(
     () => activeDocument.content.trim().split(/\s+/).filter(Boolean).length,
@@ -194,47 +272,106 @@ function App() {
   const filteredDocuments = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     if (!normalized) return documents
-    return documents.filter((document) => `${document.name} ${document.content}`.toLowerCase().includes(normalized))
+    return documents.filter((doc) => `${doc.name} ${doc.content}`.toLowerCase().includes(normalized))
   }, [documents, query])
 
-  const replaceDocuments = (incoming: Array<{ name: string; content: string; path: string }>, source: string) => {
+  /* Follow the active Omarchy theme. Tokens arrive as CSS custom properties and
+     are applied to :root, so a theme switch repaints without a reload. */
+  useEffect(() => {
+    const apply = (theme: { mode?: string; colors?: Record<string, string> } | null) => {
+      if (!theme?.colors) return
+      const root = document.documentElement
+      for (const [key, value] of Object.entries(theme.colors)) {
+        root.style.setProperty(key.startsWith('--') ? key : `--${key}`, value)
+      }
+      if (theme.mode) root.dataset.themeMode = theme.mode
+    }
+    void window.inkwell?.getTheme?.().then(apply).catch(() => undefined)
+    return window.inkwell?.onThemeChange?.(apply)
+  }, [])
+
+  /* Files arriving from the command line or a second launch are added to the
+     library rather than replacing it, so they can never discard unsaved work. */
+  useEffect(() => {
+    return window.inkwell?.onOpenExternal?.((incoming) => {
+      if (!incoming.length) return
+      const mapped: MarkdownDoc[] = incoming.map((file, index) => ({
+        id: `file:${file.path}:${index}`,
+        name: file.name,
+        path: file.path,
+        content: file.content,
+        savedAt: file.savedAt,
+        source: 'Opened files'
+      }))
+      setDocuments((current) => {
+        const fresh = mapped.filter((doc) => !current.some((existing) => existing.path === doc.path))
+        return fresh.length ? [...fresh, ...current] : current
+      })
+      setActiveId(mapped[0].id)
+      setNotice(`Opened ${mapped[0].name}`)
+    })
+  }, [])
+
+  const replaceDocuments = useCallback((incoming: DocumentFile[], source: string) => {
     if (!incoming.length) {
       setNotice('No Markdown files found in that folder')
       return
     }
-    const mapped: Document[] = incoming.map((file) => ({
-      id: `${file.path}-${Date.now()}`,
+    const mapped: MarkdownDoc[] = incoming.map((file, index) => ({
+      id: `file:${file.path}:${index}`,
       name: file.name,
       path: file.path,
       content: file.content,
+      savedAt: file.savedAt,
       source
     }))
     setDocuments(mapped)
     setActiveId(mapped[0].id)
     setFolderName(source)
     setNotice(`${mapped.length} local ${mapped.length === 1 ? 'file' : 'files'} opened`)
-  }
+  }, [])
 
-  const openFiles = async () => {
-    const incoming = await window.inkwell?.openDocuments()
-    if (incoming?.length) replaceDocuments(incoming, 'Opened files')
-  }
+  /* Opening replaces the whole library, so unsaved work must be confirmed
+     first — the window-close path already guards this. */
+  const confirmDiscard = useCallback(async () => {
+    const dirty = documents.filter((doc) => doc.isDirty)
+    if (!dirty.length) return true
+    const names = dirty.map((doc) => clampTitle(doc.name)).join(', ')
+    const discard = await window.inkwell?.confirmDiscard?.(names)
+    return discard !== false
+  }, [documents])
 
-  const openFolder = async () => {
-    const result = await window.inkwell?.openFolder()
-    if (!result?.folder) return
-    replaceDocuments(result.documents, result.folder.split('/').filter(Boolean).pop() ?? 'Folder')
-  }
+  const openFiles = useCallback(async () => {
+    if (!(await confirmDiscard())) return
+    try {
+      const incoming = await window.inkwell?.openDocuments()
+      if (incoming?.length) replaceDocuments(incoming, 'Opened files')
+    } catch {
+      setNotice('Could not open those files — check permissions and try again')
+    }
+  }, [confirmDiscard, replaceDocuments])
+
+  const openFolder = useCallback(async () => {
+    if (!(await confirmDiscard())) return
+    try {
+      const result = await window.inkwell?.openFolder()
+      if (!result?.folder) return
+      replaceDocuments(result.documents, result.folder.split('/').filter(Boolean).pop() ?? 'Folder')
+    } catch {
+      setNotice('Could not read that folder — check permissions and try again')
+    }
+  }, [confirmDiscard, replaceDocuments])
 
   const updateContent = (content: string) => {
-    setDocuments((current) => current.map((document) => document.id === activeId ? { ...document, content, isDirty: true } : document))
+    setDocuments((current) => current.map((doc) => doc.id === activeId ? { ...doc, content, isDirty: true } : doc))
     setNotice('Edited · not saved')
   }
 
-  const createDocument = () => {
-    const serial = documents.filter((document) => document.name.startsWith('Untitled')).length + 1
-    const newDocument: Document = {
-      id: `draft-${Date.now()}`,
+  const createDocument = useCallback(() => {
+    draftSerial.current += 1
+    const serial = draftSerial.current
+    const newDocument: MarkdownDoc = {
+      id: `draft:${serial}`,
       name: serial === 1 ? 'Untitled note.md' : `Untitled note ${serial}.md`,
       content: '# Untitled note\n\nStart with the smallest true sentence.\n',
       source: 'Scratch',
@@ -245,73 +382,92 @@ function App() {
     setView('write')
     setNotice('New local draft · choose Save to place it')
     window.setTimeout(() => editorRef.current?.focus(), 40)
-  }
+  }, [])
 
-  const saveDocument = async (forceSaveAs = false) => {
+  const saveDocument = useCallback(async (forceSaveAs = false) => {
     if (!window.inkwell) return
+    const target = documents.find((doc) => doc.id === activeId) ?? documents[0]
     try {
       const saved = await window.inkwell.saveDocument({
-        content: activeDocument.content,
-        path: activeDocument.path,
-        forceSaveAs
+        content: target.content,
+        path: target.path,
+        forceSaveAs,
+        knownMtime: target.savedAt
       })
       if (saved.canceled || !saved.path) return
-      const fileName = saved.path.split('/').pop() ?? activeDocument.name
-      setDocuments((current) => current.map((document) => document.id === activeId ? {
-        ...document,
+      const fileName = saved.path.split('/').pop() ?? target.name
+      setDocuments((current) => current.map((doc) => doc.id === target.id ? {
+        ...doc,
         path: saved.path,
         name: fileName,
+        savedAt: saved.savedAt,
         isSample: false,
         isDirty: false
-      } : document))
+      } : doc))
       setNotice(`Saved ${fileName}`)
     } catch {
       setNotice('Could not save this document — try Save As again')
     }
-  }
+  }, [activeId, documents])
 
   const switchToHeading = (id: string) => {
     if (view === 'write') setView('read')
     window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40)
   }
 
+  /* Keep the latest handlers in a ref so the global listener attaches once
+     instead of being torn down and rebuilt on every render. */
+  const actions = useRef({ saveDocument, openFiles, openFolder, createDocument, setView, setSidebarOpen, setOutlineOpen })
+  actions.current = { saveDocument, openFiles, openFolder, createDocument, setView, setSidebarOpen, setOutlineOpen }
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey)) return
-      if (event.key.toLowerCase() === 's') {
-        event.preventDefault()
-        void saveDocument(event.shiftKey)
+      const current = actions.current
+      if (event.key === 'Escape') {
+        current.setOutlineOpen(false)
+        return
       }
-      if (event.key.toLowerCase() === 'o' && event.shiftKey) {
-        event.preventDefault()
-        void openFolder()
-      } else if (event.key.toLowerCase() === 'o') {
-        event.preventDefault()
-        void openFiles()
+      if (!(event.ctrlKey || event.metaKey)) return
+      const key = event.key.toLowerCase()
+      const claim = () => event.preventDefault()
+
+      if (key === 's') {
+        claim()
+        void current.saveDocument(event.shiftKey)
+      } else if (key === 'o') {
+        claim()
+        if (event.shiftKey) void current.openFolder()
+        else void current.openFiles()
+      } else if (key === 'n') {
+        claim()
+        current.createDocument()
+      } else if (key === 'b') {
+        claim()
+        current.setSidebarOpen((open) => !open)
+      } else if (key === '\\') {
+        claim()
+        current.setOutlineOpen((open) => !open)
+      } else if (key === '1' || key === '2' || key === '3') {
+        claim()
+        current.setView(key === '1' ? 'read' : key === '2' ? 'split' : 'write')
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  })
+  }, [])
 
   useEffect(() => {
-    window.inkwell?.setDirty(documents.some((document) => document.isDirty))
+    window.inkwell?.setDirty(documents.some((doc) => doc.isDirty))
   }, [documents])
 
-  return (
-    <main className={`app-shell ${sidebarOpen ? '' : 'sidebar-collapsed'} ${outlineOpen ? '' : 'outline-collapsed'}`}>
-      <header className="titlebar">
-        <button className="icon-button title-control" aria-label={sidebarOpen ? 'Hide document list' : 'Show document list'} onClick={() => setSidebarOpen((open) => !open)}>
-          <Menu size={18} strokeWidth={1.7} />
-        </button>
-        <div className="wordmark" aria-label="Inkwell">
-          <span className="wordmark-mark">i</span>
-          <span>inkwell</span>
-        </div>
-        <div className="titlebar-spacer" />
-        <div className="title-status"><span className="status-dot" /> Local-first workspace</div>
-      </header>
+  const shellClass = [
+    'app-shell',
+    sidebarOpen ? 'sidebar-open' : 'sidebar-collapsed',
+    outlineOpen ? '' : 'outline-collapsed'
+  ].filter(Boolean).join(' ')
 
+  return (
+    <main className={shellClass}>
       <aside className="sidebar" aria-label="Documents">
         <div className="sidebar-actions">
           <button className="new-note" onClick={createDocument}><FilePlus2 size={16} strokeWidth={1.8} /> New note</button>
@@ -331,16 +487,20 @@ function App() {
         </div>
 
         <nav className="document-list" aria-label="Markdown documents">
-          {filteredDocuments.map((document) => (
+          {filteredDocuments.map((doc) => (
             <button
-              className={`document-item ${document.id === activeId ? 'active' : ''}`}
-              key={document.id}
-              onClick={() => setActiveId(document.id)}
+              className={`document-item ${doc.id === activeId ? 'active' : ''}`}
+              key={doc.id}
+              aria-current={doc.id === activeId}
+              onClick={() => setActiveId(doc.id)}
             >
               <FileText size={16} strokeWidth={1.6} />
               <span>
-                <strong>{clampTitle(document.name)}</strong>
-                <small>{document.isSample ? 'Sample' : document.path ? 'Local file' : 'Draft'}</small>
+                <strong>{clampTitle(doc.name)}</strong>
+                <small>
+                  {doc.isDirty && <span className="dirty-mark" aria-label="Unsaved changes">• </span>}
+                  {doc.isSample ? 'Sample' : doc.path ? 'Local file' : 'Draft'}
+                </small>
               </span>
             </button>
           ))}
@@ -355,21 +515,26 @@ function App() {
       <section className="workspace">
         <header className="document-header">
           <div className="document-identity">
+            <button className="icon-button" aria-label={sidebarOpen ? 'Hide document list' : 'Show document list'} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen((open) => !open)}>
+              <Menu size={18} strokeWidth={1.7} />
+            </button>
             <span className="file-tab"><FileText size={15} strokeWidth={1.8} /></span>
-            <div>
+            <div className="identity-text">
               <h1>{clampTitle(activeDocument.name)}</h1>
-              <p>{notice}</p>
+              <p role="status" aria-live="polite">{notice}</p>
             </div>
           </div>
           <div className="document-tools">
-            <div className="view-switcher" aria-label="Document view">
-              <button className={view === 'read' ? 'selected' : ''} onClick={() => setView('read')} aria-label="Reading view"><BookOpen size={16} /> <span>Read</span></button>
-              <button className={view === 'split' ? 'selected' : ''} onClick={() => setView('split')} aria-label="Split view"><SplitSquareHorizontal size={16} /> <span>Split</span></button>
-              <button className={view === 'write' ? 'selected' : ''} onClick={() => setView('write')} aria-label="Writing view"><PencilLine size={16} /> <span>Write</span></button>
+            <div className="view-switcher" role="group" aria-label="Document view">
+              <button className={view === 'read' ? 'selected' : ''} aria-pressed={view === 'read'} onClick={() => setView('read')} aria-label="Reading view"><BookOpen size={16} /> <span>Read</span></button>
+              <button className={view === 'split' ? 'selected' : ''} aria-pressed={view === 'split'} onClick={() => setView('split')} aria-label="Split view"><SplitSquareHorizontal size={16} /> <span>Split</span></button>
+              <button className={view === 'write' ? 'selected' : ''} aria-pressed={view === 'write'} onClick={() => setView('write')} aria-label="Writing view"><PencilLine size={16} /> <span>Write</span></button>
             </div>
             <button className="save-as-button" onClick={() => void saveDocument(true)}>Save as</button>
-            <button className="save-button" onClick={() => void saveDocument()}><Check size={16} strokeWidth={2} /> Save <kbd>⌃S</kbd></button>
-            <button className="icon-button outline-toggle" aria-label={outlineOpen ? 'Hide outline' : 'Show outline'} onClick={() => setOutlineOpen((open) => !open)}>
+            <button className="save-button" onClick={() => void saveDocument()}>
+              <Check size={16} strokeWidth={2} /> <span className="save-label">Save</span> <kbd>Ctrl+S</kbd>
+            </button>
+            <button className="icon-button outline-toggle" aria-label={outlineOpen ? 'Hide outline' : 'Show outline'} aria-expanded={outlineOpen} onClick={() => setOutlineOpen((open) => !open)}>
               {outlineOpen ? <PanelRightClose size={18} strokeWidth={1.7} /> : <PanelRightOpen size={18} strokeWidth={1.7} />}
             </button>
           </div>
@@ -378,7 +543,10 @@ function App() {
         <div className={`document-canvas view-${view}`}>
           {view !== 'write' && <div className="reader-panel"><Reader content={activeDocument.content} /></div>}
           {view !== 'read' && <div className="editor-panel">
-            <div className="editor-bar"><span><LayoutPanelLeft size={15} /> Markdown source</span><span>{activeDocument.content.length.toLocaleString()} characters</span></div>
+            <div className="editor-bar">
+              <span><LayoutPanelLeft size={15} /> Markdown source</span>
+              <span className="statusbar-optional">{activeDocument.content.length.toLocaleString()} characters</span>
+            </div>
             <textarea
               ref={editorRef}
               value={activeDocument.content}
@@ -391,8 +559,8 @@ function App() {
 
         <footer className="statusbar">
           <span><Clock3 size={14} /> {wordCount} words</span>
-          <span>{headings.length} sections</span>
-          <span className="statusbar-end">Markdown · UTF-8</span>
+          <span className="statusbar-optional">{headings.length} sections</span>
+          <span className="statusbar-end statusbar-optional">Markdown · UTF-8</span>
         </footer>
       </section>
 

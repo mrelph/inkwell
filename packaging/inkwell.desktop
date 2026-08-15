@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Inkwell
+Comment=A calm, local-first Markdown reader and editor
+Exec=inkwell %F
+Icon=inkwell
+Terminal=false
+Categories=Utility;TextEditor;
+MimeType=text/markdown;text/x-markdown;
+StartupWMClass=inkwell
+Keywords=markdown;notes;editor;writing;text;documents;
