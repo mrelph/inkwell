@@ -19,9 +19,19 @@ There is no test suite and no linter. `pnpm typecheck` is the only automated gat
 
 Inkwell runs on the **system Electron**, not a bundled one. `scripts/electron.sh`
 resolves `electron`, then `electron43`…`electron39`, then the local
-`node_modules` copy. On Arch, `pacman -S electron`. Note that Arch ships
+`node_modules` copy. On Arch, `pacman -S electron43`. Note that Arch ships
 Electron 39–43 and has **no `electron34`** — the devDependency is pinned to `^43`
 to match the system runtime.
+
+pnpm does not run Electron's postinstall (build scripts are not auto-approved),
+so `node_modules` holds no Electron binary. That is intended here; `pnpm
+approve-builds` would fetch it if a non-Arch contributor needs the fallback.
+
+The PKGBUILD pins `_electron=electron43` as a single source of truth driving both
+`depends=()` and the installed `/usr/bin/inkwell` launcher, matching Arch
+convention (obsidian and element-desktop pin electron43, code pins electron42).
+The floating `electron` meta-package `Provides` nothing, so depending on it only
+adds indirection.
 
 To run the built app directly for verification: `electron43 .` from the repo root.
 

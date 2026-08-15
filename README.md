@@ -17,11 +17,15 @@ It is built for [Omarchy](https://omarchy.org/) (Arch Linux + Hyprland): the com
 ## Requirements
 
 Inkwell runs on the **system Electron** rather than bundling its own copy, so it
-tracks your distribution's security updates and stays small.
+tracks your distribution's security updates and stays small — the package is
+about 1 MB installed instead of ~200 MB.
 
 ```bash
-sudo pacman -S electron
+sudo pacman -S electron43
 ```
+
+The package pins a specific Electron major, as Arch's own Electron applications
+do. Installing via `makepkg -si` pulls it in for you.
 
 ## Run it in development
 

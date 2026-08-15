@@ -1,14 +1,11 @@
 # Maintainer: Mark Relph
 #
-# NOTE (electron binary name): `depends=('electron')` assumes the system
-# `electron` package/meta-package installs a binary literally named
-# `electron` on PATH (true today: Arch's extra/electron meta-package
-# currently resolves to electron43, and electron43 provides an `electron`
-# symlink/binary). The installed launcher below prefers plain `electron`
-# but falls back to the newest `electronNN` binary it can find, in case a
-# future Arch release ships only versioned binaries without the
-# unversioned `electron` alias. Revisit this if that fallback ever
-# triggers in practice.
+# NOTE (electron version): Arch pins Electron apps to a specific major rather
+# than the floating `electron` meta-package (obsidian and element-desktop use
+# electron43, code uses electron42), because the meta-package Provides nothing
+# and simply depends on the current major. $_electron below is the single source
+# of truth: it drives both depends=() and the installed launcher. Bumping
+# Electron means changing that one line, rebuilding, and re-testing.
 
 pkgname=inkwell
 pkgver=0.1.0
@@ -17,10 +14,11 @@ pkgdesc="A calm, local-first Markdown reader and editor for Linux"
 arch=('any')
 url="https://github.com/mrelph/inkwell"
 license=('MIT')
-depends=('electron')
+_electron=electron43
+depends=("${_electron}" 'hicolor-icon-theme')
 makedepends=('pnpm' 'nodejs')
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('d7be9ea3c48da76522a189a13cb3824ed9bb98f5e84670cc028ab530f42bd174')
 
 build() {
   cd "${srcdir}/${pkgname}-${pkgver}"
@@ -57,26 +55,12 @@ package() {
   install -d "${pkgdir}/usr/bin"
   cat > "${pkgdir}/usr/bin/${pkgname}" <<'EOF'
 #!/bin/bash
-set -euo pipefail
-
-app_dir="/usr/lib/inkwell"
-
-# Prefer the unversioned `electron` binary provided by the system
-# `electron` meta-package. Fall back to the newest installed `electronNN`
-# binary if only a versioned binary is present on PATH.
-if command -v electron >/dev/null 2>&1; then
-  electron_bin="electron"
-else
-  electron_bin="$(compgen -c electron 2>/dev/null | grep -E '^electron[0-9]+$' | sort -V | tail -n1 || true)"
-fi
-
-if [ -z "${electron_bin:-}" ]; then
-  echo "inkwell: no 'electron' or 'electronNN' binary found on PATH" >&2
-  exit 1
-fi
-
-exec "${electron_bin}" "${app_dir}" "$@"
+# Exec the system Electron against the installed app, forwarding arguments so
+# `inkwell notes.md` opens that file. The binary is pinned by the PKGBUILD's
+# $_electron and guaranteed present by depends=().
+exec @ELECTRON@ /usr/lib/inkwell "$@"
 EOF
+  sed -i "s|@ELECTRON@|${_electron}|" "${pkgdir}/usr/bin/${pkgname}"
   chmod 755 "${pkgdir}/usr/bin/${pkgname}"
 
   install -Dm644 packaging/inkwell.desktop "${pkgdir}/usr/share/applications/${pkgname}.desktop"
