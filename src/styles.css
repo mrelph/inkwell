@@ -71,10 +71,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 ::-webkit-scrollbar-thumb:hover { background-color: var(--text-muted); }
 
 /* The compositor owns the window frame: Hyprland draws the border and the
-   title, so Inkwell ships no titlebar of its own. Three regions, one row. */
+   title, so Inkwell ships no titlebar of its own. Three regions, one row.
+
+   grid-template-columns is declared exactly ONCE, here. Panel widths are custom
+   properties so breakpoints and collapse state compose instead of competing —
+   see the cascade note at the end of this file before changing either. */
 .app-shell {
+  --col-sidebar: 250px;
+  --col-outline: 220px;
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr) 220px;
+  grid-template-columns: var(--col-sidebar) minmax(0, 1fr) var(--col-outline);
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -195,9 +201,36 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   text-transform: uppercase;
 }
 
-.folder-line { display: flex; align-items: center; gap: 3px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* The chevron used to be decoration on a span; it now genuinely collapses the
+   list, because an affordance that looks interactive has to be interactive. */
+.folder-line {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 2px 2px 2px 0;
+  cursor: pointer;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+}
+
+.folder-line span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.folder-line:hover { color: var(--text-primary); }
+.folder-line svg { flex: none; transition: transform 140ms ease; }
+.folder-line[aria-expanded='false'] svg { transform: rotate(-90deg); }
 
 .document-list { display: flex; flex: 1; flex-direction: column; gap: 2px; min-height: 0; overflow: auto; padding: 0 1px; }
+
+/* A row is a button plus its own close control, so the row is a positioned
+   wrapper rather than a single button (a button cannot nest a button). */
+.document-row { position: relative; display: flex; align-items: stretch; }
 
 .document-item {
   display: grid;
@@ -205,7 +238,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   gap: 8px;
   align-items: start;
   width: 100%;
-  padding: 8px;
+  padding: 8px 26px 8px 8px;
   cursor: pointer;
   text-align: left;
   color: var(--text-secondary);
@@ -214,6 +247,31 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   border-radius: 9px;
   transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
 }
+
+.close-document {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  transform: translateY(-50%);
+  cursor: pointer;
+  opacity: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
+}
+
+.document-row:hover .close-document,
+.close-document:focus-visible { opacity: 1; }
+.close-document:hover { color: var(--text-primary); background: var(--surface-raised); }
+
+.empty-library { padding: 10px 8px; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
 
 .document-item:hover {
   color: var(--text-primary);
@@ -237,7 +295,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .sidebar-foot {
   display: flex;
   gap: 8px;
-  margin: 12px 3px 0;
+  /* auto keeps the footer at the bottom even when the list is collapsed. */
+  margin: auto 3px 0;
   padding: 11px 8px 2px;
   color: var(--text-muted);
   border-top: 1px solid var(--line-hairline);
@@ -590,17 +649,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .outline-tip p { margin: 0; font-size: 10px; line-height: 1.48; }
 
 /* Collapsed panels are removed from layout entirely rather than hidden with
-   opacity, so they cannot hold keyboard focus while invisible. */
-.sidebar-collapsed { grid-template-columns: 0 minmax(0, 1fr) 220px; }
+   opacity, so they cannot hold keyboard focus while invisible. The column
+   widths themselves are set by the state rules at the end of this file. */
 .sidebar-collapsed .sidebar { display: none; }
-.outline-collapsed { grid-template-columns: 250px minmax(0, 1fr) 0; }
 .outline-collapsed .outline { display: none; }
-.sidebar-collapsed.outline-collapsed { grid-template-columns: 0 minmax(0, 1fr) 0; }
 
 /* Tiled windows are routinely far narrower than a floating one. Each step below
    must stay fully operable, never leave a visible-but-inert control. */
 @media (max-width: 1120px) {
-  .app-shell { position: relative; grid-template-columns: 230px minmax(0, 1fr) 0; }
+  /* The outline loses its column and becomes an overlay instead. */
+  .app-shell { position: relative; --col-sidebar: 230px; --col-outline: 0px; }
   /* Overlays the canvas, never the header — the header holds Save. */
   .app-shell:not(.outline-collapsed) .outline {
     position: absolute;
@@ -612,18 +670,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
     width: 240px;
     box-shadow: -12px 0 28px rgba(0, 0, 0, .22);
   }
-  .outline-collapsed { grid-template-columns: 230px minmax(0, 1fr) 0; }
   .view-switcher button span { display: none; }
   .view-switcher button { padding: 0 7px; }
 }
 
-@media (min-width: 1121px) { .outline-toggle { display: none; } }
+/* Above this width the outline is a docked column, so the header toggle is the
+   affordance and the in-panel close button would be a second, redundant one.
+   The toggle itself is NEVER hidden: it is the only control that can reopen the
+   outline, and hiding it once made closing the outline a one-way door. */
+@media (min-width: 1121px) { .outline-heading .icon-button { display: none; } }
 
 @media (max-width: 820px) {
-  .app-shell { grid-template-columns: 0 minmax(0, 1fr) 0; }
-  .app-shell .sidebar { display: none; }
-  .app-shell.sidebar-open { grid-template-columns: 230px minmax(0, 1fr) 0; }
-  .app-shell.sidebar-open .sidebar { display: flex; }
+  /* Sidebar is off by default here; the hamburger brings it back as a column. */
+  .app-shell { --col-sidebar: 0px; }
+  .app-shell.sidebar-open { --col-sidebar: 230px; }
   :root { --header-h: 46px; }
   .document-header { min-height: 46px; gap: 8px; padding: 7px 10px; }
   .document-identity h1 { max-width: 180px; font-size: 13px; }
@@ -661,4 +721,53 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
   .new-note:hover, .save-button:hover { transform: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Collapse state. THIS BLOCK MUST STAY LAST.
+
+   These carry two classes (0,2,0) and are declared after every breakpoint, so
+   they win regardless of source order. Both parts matter: a single-class rule
+   placed before a breakpoint's `.app-shell` rule loses at equal specificity and
+   silently leaves a dead column where the panel used to be.
+   --------------------------------------------------------------------------- */
+.app-shell.sidebar-collapsed { --col-sidebar: 0px; }
+.app-shell.outline-collapsed { --col-outline: 0px; }
+
+/* Focus writing: the document gets the window. Only the writing surface, the
+   save controls, and the split toggle survive. Declared after the collapse
+   rules so it wins outright whatever the panels' own state happens to be. */
+.app-shell.focus-mode { --col-sidebar: 0px; --col-outline: 0px; }
+.app-shell.focus-mode .sidebar,
+.app-shell.focus-mode .outline,
+.app-shell.focus-mode .statusbar { display: none; }
+.app-shell.focus-mode .document-header {
+  min-height: 44px;
+  padding: 6px 12px;
+  background: var(--surface-reader);
+  border-bottom-color: transparent;
+}
+.app-shell.focus-mode .document-identity h1 {
+  color: var(--text-muted);
+  font-family: 'Manrope Variable', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+}
+.app-shell.focus-mode .editor-panel,
+.app-shell.focus-mode .reader-panel { background: var(--surface-reader); }
+.app-shell.focus-mode .editor-bar { display: none; }
+/* Save controls are part of the mode's contract, so they survive the narrow
+   breakpoint that otherwise drops Save as. */
+.app-shell.focus-mode .save-as-button { display: inline-block; }
+.app-shell.focus-mode .view-split .reader-panel { border-right: 1px solid var(--line-hairline); }
+/* Roomier measure with no panels competing for width. */
+.app-shell.focus-mode .editor-panel textarea { padding: clamp(28px, 7vw, 120px) clamp(24px, 12vw, 220px); }
+.app-shell.focus-mode.split-focus .editor-panel textarea { padding: clamp(24px, 4vw, 60px) clamp(20px, 5vw, 82px); }
+
+/* A window too narrow for a real split normally collapses to the reader, which
+   is right everywhere except here: focus *writing* must keep the writing
+   surface. Invert the collapse rather than dropping the editor. */
+@media (max-width: 820px) {
+  .app-shell.focus-mode.split-focus .editor-panel { display: grid; }
+  .app-shell.focus-mode.split-focus .reader-panel { display: none; }
 }

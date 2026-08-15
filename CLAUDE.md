@@ -72,12 +72,49 @@ app. No backend and no network calls; all persistence is filesystem I/O via IPC.
   undefined (running outside Electron) file operations no-op.
 
 **Renderer data model:** all open documents live in one `documents: MarkdownDoc[]`
-array; `activeId` selects the current one. Opening files/a folder *replaces* the
-array and so is gated behind `confirmDiscard`. Files arriving from argv or a
-second instance are *appended* instead, so they can never discard unsaved work.
+array; `activeId` selects the current one. Ids are keyed on path (`file:<path>`)
+so reopening a file resolves to the existing entry instead of duplicating it.
+
+Open semantics are deliberately split, and the distinction matters:
+
+- `addDocuments` — **appends**, deduped by path. Used by open-file, argv, and
+  second-instance. Discards nothing, so it needs no confirmation prompt.
+- `replaceDocuments` — **replaces** the library, treating a folder as a
+  workspace. Used only by open-folder, and gated behind `confirmDiscard`.
+
+Don't route open-file back through `replaceDocuments`; that was the original
+behaviour and it silently discarded every other open document.
 
 **View modes** (`read`/`split`/`write`) are driven by CSS grid classes on
 `.document-canvas`, not separate components.
+
+**Focus writing** is an orthogonal `focusMode` flag, not a fourth view mode —
+focus + split is a legitimate combination. It hides the sidebar, outline and
+status bar via `.focus-mode`, and `Escape` exits it *before* falling through to
+closing the outline. One inversion to be aware of: below 820px a split normally
+collapses to the reader, but in focus mode it must collapse to the **editor**,
+since the whole point is the writing surface.
+
+## Layout invariants
+
+`grid-template-columns` is declared exactly once, on `.app-shell`, and driven by
+`--col-sidebar` / `--col-outline`. The collapse-state rules live in a block at
+the very end of `styles.css`, carry two classes, and must stay last: a
+single-class rule placed before a breakpoint's `.app-shell` rule loses at equal
+specificity and leaves a dead column where the panel used to be. That was a real
+bug (a 230px gutter between 821–1120px), so don't re-introduce per-breakpoint
+column declarations.
+
+Never hide the only control that can restore a panel. Hiding `.outline-toggle`
+above 1120px while leaving the in-panel close button visible made closing the
+outline a one-way door with a pointer. The toggle is now always visible; the
+in-panel close appears only when the outline is an overlay.
+
+`src/styles.css` layout behaviour is verifiable without screenshots: load
+`dist/index.html` in an offscreen `BrowserWindow` and read
+`getComputedStyle(...).gridTemplateColumns` while driving the UI with synthetic
+`KeyboardEvent`s. Note such a harness needs `app.on('window-all-closed', () => {})`
+or Electron quits as soon as the first probe window is destroyed.
 
 ## The window belongs to the compositor
 

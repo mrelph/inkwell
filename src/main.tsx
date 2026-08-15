@@ -11,7 +11,9 @@ import {
   FileText,
   FolderOpen,
   LayoutPanelLeft,
+  Maximize2,
   Menu,
+  Minimize2,
   PanelRightClose,
   PanelRightOpen,
   PencilLine,
@@ -258,6 +260,8 @@ function App() {
   const [outlineOpen, setOutlineOpen] = useState(
     () => !window.matchMedia('(max-width: 1120px)').matches
   )
+  const [focusMode, setFocusMode] = useState(false)
+  const [libraryOpen, setLibraryOpen] = useState(true)
   const [notice, setNotice] = useState('Sample document · unsaved')
   const [folderName, setFolderName] = useState('Sample documents')
   const editorRef = useRef<HTMLTextAreaElement>(null)
@@ -304,27 +308,33 @@ function App() {
     return window.inkwell?.onThemeChange?.(apply)
   }, [])
 
-  /* Files arriving from the command line or a second launch are added to the
-     library rather than replacing it, so they can never discard unsaved work. */
-  useEffect(() => {
-    return window.inkwell?.onOpenExternal?.((incoming) => {
-      if (!incoming.length) return
-      const mapped: MarkdownDoc[] = incoming.map((file, index) => ({
-        id: `file:${file.path}:${index}`,
-        name: file.name,
-        path: file.path,
-        content: file.content,
-        savedAt: file.savedAt,
-        source: 'Opened files'
-      }))
-      setDocuments((current) => {
-        const fresh = mapped.filter((doc) => !current.some((existing) => existing.path === doc.path))
-        return fresh.length ? [...fresh, ...current] : current
-      })
-      setActiveId(mapped[0].id)
-      setNotice(`Opened ${mapped[0].name}`)
+  /* Adding is the default for opening files, whether they arrive from the file
+     dialog, argv, or a second launch: nothing already open is discarded, and a
+     file already in the library is activated rather than duplicated. Ids are
+     keyed on path so re-opening resolves to the same entry. */
+  const addDocuments = useCallback((incoming: DocumentFile[], source: string) => {
+    if (!incoming.length) return
+    const mapped: MarkdownDoc[] = incoming.map((file) => ({
+      id: `file:${file.path}`,
+      name: file.name,
+      path: file.path,
+      content: file.content,
+      savedAt: file.savedAt,
+      source
+    }))
+    setDocuments((current) => {
+      const fresh = mapped.filter((doc) => !current.some((existing) => existing.path === doc.path))
+      return fresh.length ? [...fresh, ...current] : current
     })
+    setActiveId(mapped[0].id)
+    setNotice(mapped.length === 1
+      ? `Opened ${mapped[0].name}`
+      : `Opened ${mapped.length} files`)
   }, [])
+
+  useEffect(() => {
+    return window.inkwell?.onOpenExternal?.((incoming) => addDocuments(incoming, 'Opened files'))
+  }, [addDocuments])
 
   const replaceDocuments = useCallback((incoming: DocumentFile[], source: string) => {
     if (!incoming.length) {
@@ -355,15 +365,16 @@ function App() {
     return discard !== false
   }, [documents])
 
+  /* Opening files adds to the library, so there is nothing to discard and no
+     prompt to answer. Only opening a folder replaces the workspace. */
   const openFiles = useCallback(async () => {
-    if (!(await confirmDiscard())) return
     try {
       const incoming = await window.inkwell?.openDocuments()
-      if (incoming?.length) replaceDocuments(incoming, 'Opened files')
+      if (incoming?.length) addDocuments(incoming, 'Opened files')
     } catch {
       setNotice('Could not open those files — check permissions and try again')
     }
-  }, [confirmDiscard, replaceDocuments])
+  }, [addDocuments])
 
   const openFolder = useCallback(async () => {
     if (!(await confirmDiscard())) return
@@ -424,6 +435,37 @@ function App() {
     }
   }, [activeId, documents])
 
+  const closeDocument = useCallback(async (id: string) => {
+    const index = documents.findIndex((doc) => doc.id === id)
+    if (index === -1) return
+    if (documents.length === 1) {
+      setNotice('That is the only open document')
+      return
+    }
+    const target = documents[index]
+    if (target.isDirty) {
+      const discard = await window.inkwell?.confirmDiscard?.(clampTitle(target.name))
+      if (discard === false) return
+    }
+    const remaining = documents.filter((doc) => doc.id !== id)
+    setDocuments(remaining)
+    if (id === activeId) setActiveId(remaining[Math.min(index, remaining.length - 1)].id)
+    setNotice(`Closed ${clampTitle(target.name)}`)
+  }, [activeId, documents])
+
+  /* Focus writing is orthogonal to the view mode rather than a fourth mode:
+     focus + split is a legitimate combination. Reading has no writing surface,
+     so entering focus from Read promotes to Write. */
+  const toggleFocus = useCallback(() => {
+    const next = !focusMode
+    setFocusMode(next)
+    if (next && view === 'read') setView('write')
+  }, [focusMode, view])
+
+  const toggleSplit = useCallback(() => {
+    setView((current) => (current === 'split' ? 'write' : 'split'))
+  }, [])
+
   const switchToHeading = (id: string) => {
     if (view === 'write') setView('read')
     window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40)
@@ -431,14 +473,17 @@ function App() {
 
   /* Keep the latest handlers in a ref so the global listener attaches once
      instead of being torn down and rebuilt on every render. */
-  const actions = useRef({ saveDocument, openFiles, openFolder, createDocument, setView, setSidebarOpen, setOutlineOpen })
-  actions.current = { saveDocument, openFiles, openFolder, createDocument, setView, setSidebarOpen, setOutlineOpen }
+  const actions = useRef({ saveDocument, openFiles, openFolder, createDocument, setView, setSidebarOpen, setOutlineOpen, toggleFocus, toggleSplit, focusMode })
+  actions.current = { saveDocument, openFiles, openFolder, createDocument, setView, setSidebarOpen, setOutlineOpen, toggleFocus, toggleSplit, focusMode }
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const current = actions.current
+      /* Escape leaves focus writing first: it is the more enclosing state, and
+         the outline is not visible while focus mode is on. */
       if (event.key === 'Escape') {
-        current.setOutlineOpen(false)
+        if (current.focusMode) current.toggleFocus()
+        else current.setOutlineOpen(false)
         return
       }
       if (!(event.ctrlKey || event.metaKey)) return
@@ -455,6 +500,9 @@ function App() {
       } else if (key === 'n') {
         claim()
         current.createDocument()
+      } else if (key === 'f' && event.shiftKey) {
+        claim()
+        current.toggleFocus()
       } else if (key === 'b') {
         claim()
         current.setSidebarOpen((open) => !open)
@@ -477,16 +525,18 @@ function App() {
   const shellClass = [
     'app-shell',
     sidebarOpen ? 'sidebar-open' : 'sidebar-collapsed',
-    outlineOpen ? '' : 'outline-collapsed'
+    outlineOpen ? '' : 'outline-collapsed',
+    focusMode ? 'focus-mode' : '',
+    focusMode && view === 'split' ? 'split-focus' : ''
   ].filter(Boolean).join(' ')
 
   return (
     <main className={shellClass}>
       <aside className="sidebar" aria-label="Documents">
         <div className="sidebar-actions">
-          <button className="new-note" onClick={createDocument}><FilePlus2 size={16} strokeWidth={1.8} /> New note</button>
-          <button className="icon-button" aria-label="Open Markdown file" onClick={() => void openFiles()}><FileText size={18} strokeWidth={1.7} /></button>
-          <button className="icon-button" aria-label="Open folder" onClick={() => void openFolder()}><FolderOpen size={18} strokeWidth={1.7} /></button>
+          <button className="new-note" title="New note (Ctrl+N)" onClick={createDocument}><FilePlus2 size={16} strokeWidth={1.8} /> New note</button>
+          <button className="icon-button" aria-label="Open Markdown file" title="Open file — adds to the library (Ctrl+O)" onClick={() => void openFiles()}><FileText size={18} strokeWidth={1.7} /></button>
+          <button className="icon-button" aria-label="Open folder" title="Open folder — replaces the library (Ctrl+Shift+O)" onClick={() => void openFolder()}><FolderOpen size={18} strokeWidth={1.7} /></button>
         </div>
 
         <label className="search-box">
@@ -496,29 +546,55 @@ function App() {
         </label>
 
         <div className="library-label">
-          <span className="folder-line"><ChevronDown size={14} /> {folderName}</span>
+          <button
+            className="folder-line"
+            aria-expanded={libraryOpen}
+            aria-controls="document-list"
+            title={folderName}
+            onClick={() => setLibraryOpen((open) => !open)}
+          >
+            <ChevronDown size={14} /> <span>{folderName}</span>
+          </button>
           <span>{filteredDocuments.length}</span>
         </div>
 
-        <nav className="document-list" aria-label="Markdown documents">
-          {filteredDocuments.map((doc) => (
-            <button
-              className={`document-item ${doc.id === activeId ? 'active' : ''}`}
-              key={doc.id}
-              aria-current={doc.id === activeId}
-              onClick={() => setActiveId(doc.id)}
-            >
-              <FileText size={16} strokeWidth={1.6} />
-              <span>
-                <strong>{clampTitle(doc.name)}</strong>
-                <small>
-                  {doc.isDirty && <span className="dirty-mark" aria-label="Unsaved changes">• </span>}
-                  {doc.isSample ? 'Sample' : doc.path ? 'Local file' : 'Draft'}
-                </small>
-              </span>
-            </button>
-          ))}
-        </nav>
+        {libraryOpen && (
+          <nav className="document-list" id="document-list" aria-label="Markdown documents">
+            {filteredDocuments.length ? filteredDocuments.map((doc) => (
+              <div className="document-row" key={doc.id}>
+                <button
+                  className={`document-item ${doc.id === activeId ? 'active' : ''}`}
+                  aria-current={doc.id === activeId}
+                  title={doc.path ?? 'Unsaved draft — not yet on disk'}
+                  onClick={() => setActiveId(doc.id)}
+                >
+                  <FileText size={16} strokeWidth={1.6} />
+                  <span>
+                    <strong>{clampTitle(doc.name)}</strong>
+                    <small>
+                      {doc.isDirty && <span className="dirty-mark" aria-label="Unsaved changes">• </span>}
+                      {doc.isSample ? 'Sample' : doc.path ? 'Local file' : 'Draft'}
+                    </small>
+                  </span>
+                </button>
+                {documents.length > 1 && (
+                  <button
+                    className="close-document"
+                    aria-label={`Close ${clampTitle(doc.name)}`}
+                    title="Close"
+                    onClick={() => void closeDocument(doc.id)}
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            )) : (
+              <p className="empty-library">
+                {query ? `Nothing matches “${query}”.` : 'No documents open. Press Ctrl+O to open a file.'}
+              </p>
+            )}
+          </nav>
+        )}
 
         <div className="sidebar-foot">
           <Sparkles size={15} strokeWidth={1.6} />
@@ -529,28 +605,49 @@ function App() {
       <section className="workspace">
         <header className="document-header">
           <div className="document-identity">
-            <button className="icon-button" aria-label={sidebarOpen ? 'Hide document list' : 'Show document list'} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen((open) => !open)}>
-              <Menu size={18} strokeWidth={1.7} />
-            </button>
-            <span className="file-tab"><FileText size={15} strokeWidth={1.8} /></span>
+            {focusMode ? (
+              <button className="icon-button" aria-label="Leave focus writing" title="Leave focus writing (Escape)" onClick={toggleFocus}>
+                <Minimize2 size={18} strokeWidth={1.7} />
+              </button>
+            ) : (
+              <button className="icon-button" aria-label={sidebarOpen ? 'Hide document list' : 'Show document list'} aria-expanded={sidebarOpen} title="Document list (Ctrl+B)" onClick={() => setSidebarOpen((open) => !open)}>
+                <Menu size={18} strokeWidth={1.7} />
+              </button>
+            )}
+            {!focusMode && <span className="file-tab"><FileText size={15} strokeWidth={1.8} /></span>}
             <div className="identity-text">
               <h1>{clampTitle(activeDocument.name)}</h1>
-              <p role="status" aria-live="polite">{notice}</p>
+              {!focusMode && <p role="status" aria-live="polite">{notice}</p>}
             </div>
           </div>
           <div className="document-tools">
-            <div className="view-switcher" role="group" aria-label="Document view">
-              <button className={view === 'read' ? 'selected' : ''} aria-pressed={view === 'read'} onClick={() => setView('read')} aria-label="Reading view"><BookOpen size={16} /> <span>Read</span></button>
-              <button className={view === 'split' ? 'selected' : ''} aria-pressed={view === 'split'} onClick={() => setView('split')} aria-label="Split view"><SplitSquareHorizontal size={16} /> <span>Split</span></button>
-              <button className={view === 'write' ? 'selected' : ''} aria-pressed={view === 'write'} onClick={() => setView('write')} aria-label="Writing view"><PencilLine size={16} /> <span>Write</span></button>
-            </div>
-            <button className="save-as-button" onClick={() => void saveDocument(true)}>Save as</button>
-            <button className="save-button" onClick={() => void saveDocument()}>
+            {focusMode ? (
+              <div className="view-switcher" role="group" aria-label="Document view">
+                <button className={view === 'split' ? 'selected' : ''} aria-pressed={view === 'split'} onClick={toggleSplit} aria-label="Split with reader" title="Split with reader (Ctrl+2)">
+                  <SplitSquareHorizontal size={16} /> <span>Split</span>
+                </button>
+              </div>
+            ) : (
+              <div className="view-switcher" role="group" aria-label="Document view">
+                <button className={view === 'read' ? 'selected' : ''} aria-pressed={view === 'read'} onClick={() => setView('read')} aria-label="Reading view" title="Read (Ctrl+1)"><BookOpen size={16} /> <span>Read</span></button>
+                <button className={view === 'split' ? 'selected' : ''} aria-pressed={view === 'split'} onClick={() => setView('split')} aria-label="Split view" title="Split (Ctrl+2)"><SplitSquareHorizontal size={16} /> <span>Split</span></button>
+                <button className={view === 'write' ? 'selected' : ''} aria-pressed={view === 'write'} onClick={() => setView('write')} aria-label="Writing view" title="Write (Ctrl+3)"><PencilLine size={16} /> <span>Write</span></button>
+              </div>
+            )}
+            <button className="save-as-button" title="Save as (Ctrl+Shift+S)" onClick={() => void saveDocument(true)}>Save as</button>
+            <button className="save-button" title="Save (Ctrl+S)" onClick={() => void saveDocument()}>
               <Check size={16} strokeWidth={2} /> <span className="save-label">Save</span> <kbd>Ctrl+S</kbd>
             </button>
-            <button className="icon-button outline-toggle" aria-label={outlineOpen ? 'Hide outline' : 'Show outline'} aria-expanded={outlineOpen} onClick={() => setOutlineOpen((open) => !open)}>
-              {outlineOpen ? <PanelRightClose size={18} strokeWidth={1.7} /> : <PanelRightOpen size={18} strokeWidth={1.7} />}
-            </button>
+            {!focusMode && (
+              <>
+                <button className="icon-button outline-toggle" aria-label={outlineOpen ? 'Hide outline' : 'Show outline'} aria-expanded={outlineOpen} title="Outline (Ctrl+\)" onClick={() => setOutlineOpen((open) => !open)}>
+                  {outlineOpen ? <PanelRightClose size={18} strokeWidth={1.7} /> : <PanelRightOpen size={18} strokeWidth={1.7} />}
+                </button>
+                <button className="icon-button" aria-label="Focus writing" title="Focus writing (Ctrl+Shift+F)" onClick={toggleFocus}>
+                  <Maximize2 size={18} strokeWidth={1.7} />
+                </button>
+              </>
+            )}
           </div>
         </header>
 

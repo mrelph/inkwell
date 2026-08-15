@@ -9,6 +9,7 @@ It is built for [Omarchy](https://omarchy.org/) (Arch Linux + Hyprland): the com
 - Open one or more Markdown files, or browse a folder of Markdown documents.
 - Create new drafts and save them as local `.md` files.
 - Switch between focused reading, source editing, and split view.
+- Drop into focus writing, where only the page, the save controls, and an optional split remain.
 - Render GitHub-flavored Markdown including tables, task lists, blockquotes, and code.
 - Use the generated outline to navigate long documents.
 - Follow the active Omarchy theme, including light and dark, without a restart.
@@ -80,15 +81,29 @@ Check the current handler with `xdg-mime query default text/markdown`.
 | `Ctrl+Shift+S` | Save as |
 | `Ctrl+N` | New note |
 | `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | Read / Split / Write view |
+| `Ctrl+Shift+F` | Focus writing |
 | `Ctrl+B` | Toggle the document library |
 | `Ctrl+\` | Toggle the outline |
-| `Escape` | Close the outline overlay |
+| `Escape` | Leave focus writing, otherwise close the outline |
 
 You can also open a file directly:
 
 ```bash
 inkwell notes.md
 ```
+
+## Opening documents
+
+Two deliberately different behaviours:
+
+- **Open file** (`Ctrl+O`) **adds** to the library. Nothing already open is
+  discarded, and a file that is already open is selected rather than duplicated.
+  Files passed on the command line behave the same way.
+- **Open folder** (`Ctrl+Shift+O`) **replaces** the library, treating the folder
+  as a workspace. If anything is unsaved, Inkwell asks first.
+
+Close a single document with the `×` on its row in the library. Hover a row to
+see its full path.
 
 ## Theming
 
