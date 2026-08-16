@@ -18,7 +18,7 @@ _electron=electron43
 depends=("${_electron}" 'hicolor-icon-theme')
 makedepends=('pnpm' 'nodejs')
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('bff289be5afd3bc70d4fea34898c863b945116100d4c3cb8e5e574376e248f1c')
 
 build() {
   cd "${srcdir}/${pkgname}-${pkgver}"

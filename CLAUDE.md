@@ -110,11 +110,34 @@ above 1120px while leaving the in-panel close button visible made closing the
 outline a one-way door with a pointer. The toggle is now always visible; the
 in-panel close appears only when the outline is an overlay.
 
-`src/styles.css` layout behaviour is verifiable without screenshots: load
-`dist/index.html` in an offscreen `BrowserWindow` and read
-`getComputedStyle(...).gridTemplateColumns` while driving the UI with synthetic
-`KeyboardEvent`s. Note such a harness needs `app.on('window-all-closed', () => {})`
-or Electron quits as soon as the first probe window is destroyed.
+Each region is pinned to its track (`.sidebar` → 1, `.workspace` → 2,
+`.outline` → 3). This is load-bearing, not tidiness: a `display: none` panel
+stops occupying a grid cell, so under auto-placement the workspace slides into
+the collapsed panel's zero-width track while the real track sits empty.
+
+`.workspace` needs an explicit `grid-template-columns: minmax(0, 1fr)`. With
+only an implicit `auto` column the track is sized by its widest child's
+min-content — the header's button row — so the workspace grows past its own grid
+track and the canvas overflows with it.
+
+**Verify layout by measuring element widths, not track sizes.** Correct
+`gridTemplateColumns` does not imply correct layout: both bugs above produced
+perfect track values while the canvas was visibly wrong, and a harness checking
+only tracks reported a false pass. Assert `canvas <= workspace` and
+`workspace == viewport - sidebar - outline`.
+
+Two ways to check, in increasing fidelity:
+
+- Offscreen: load `dist/index.html` in a hidden `BrowserWindow`, drive it with
+  synthetic `KeyboardEvent`s, and measure `getBoundingClientRect()`. Such a
+  harness needs `app.on('window-all-closed', () => {})` or Electron quits as
+  soon as the first probe window is destroyed.
+- Live: launch with `--remote-debugging-port=9222` and drive the real window via
+  `Runtime.evaluate` over the DevTools protocol (Node's global `WebSocket` is
+  enough). This is the one that catches real-DPR and real-theme issues.
+
+Screenshots are a poor fit here: `grim` captures whatever is composited at the
+given coordinates, so it silently grabs unrelated windows when the stack shifts.
 
 ## The window belongs to the compositor
 
