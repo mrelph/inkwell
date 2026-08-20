@@ -6,7 +6,12 @@ It is built for [Omarchy](https://omarchy.org/) (Arch Linux + Hyprland): the com
 
 ## What it does
 
-- Open one or more Markdown files, or browse a folder of Markdown documents.
+- Add folders of Markdown to the library and keep several at once — each stays
+  its own group, and adding one never closes anything else.
+- Reopen where you left off: your folders, your recent files, and the document
+  you were in all come back on the next launch.
+- Act on files from the library: open, rename, duplicate, reveal in your file
+  manager, copy the path, or move to the desktop trash.
 - Create new drafts and save them as local `.md` files.
 - Switch between focused reading, source editing, and split view.
 - Drop into focus writing, where only the page, the save controls, and an optional split remain.
@@ -76,13 +81,13 @@ Check the current handler with `xdg-mime query default text/markdown`.
 | Shortcut | Action |
 | --- | --- |
 | `Ctrl+O` | Open Markdown file(s) |
-| `Ctrl+Shift+O` | Open a folder |
+| `Ctrl+Shift+O` | Add a folder to the library |
 | `Ctrl+S` | Save the active document |
 | `Ctrl+Shift+S` | Save as |
 | `Ctrl+N` | New note |
 | `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | Read / Split / Write view |
 | `Ctrl+Shift+F` | Focus writing |
-| `Ctrl+B` | Toggle the document library |
+| `Ctrl+B` | Toggle the library |
 | `Ctrl+\` | Toggle the outline |
 | `Escape` | Leave focus writing, otherwise close the outline |
 
@@ -92,18 +97,41 @@ You can also open a file directly:
 inkwell notes.md
 ```
 
-## Opening documents
+## The library
 
-Two deliberately different behaviours:
+The left pane is your library, grouped by where each document came from. Nothing
+you do to it ever replaces what is already there.
 
-- **Open file** (`Ctrl+O`) **adds** to the library. Nothing already open is
-  discarded, and a file that is already open is selected rather than duplicated.
-  Files passed on the command line behave the same way.
-- **Open folder** (`Ctrl+Shift+O`) **replaces** the library, treating the folder
-  as a workspace. If anything is unsaved, Inkwell asks first.
+- **Add folder** (`Ctrl+Shift+O`) adds a folder as a *source*: its Markdown is
+  listed under the folder's name, up to eight folders at once. Overlapping
+  folders are refused, so a file is never listed twice.
+- **Open file** (`Ctrl+O`) adds a file to **Recent**, or to its folder's group if
+  you have already added the folder it lives in. Files passed on the command
+  line behave the same way.
+- **Drafts** holds new notes that have no file yet. Saving one moves it to
+  wherever it landed on disk.
+- **Sample documents** appear on a first run and step aside as soon as you open
+  anything of your own.
 
-Close a single document with the `×` on its row in the library. Hover a row to
-see its full path.
+Inkwell remembers your folders, your recent files, and the document you were in,
+and restores them on the next launch. A folder that has since moved or been
+unmounted is quietly dropped.
+
+Each row has an actions menu — the `⋯` button, or a right-click:
+
+| Action | What it does |
+| --- | --- |
+| Open | Reads the file in, if it is not already open |
+| Rename… | Renames the file on disk, in place |
+| Duplicate | Copies it alongside the original as `name copy.md` |
+| Reveal in file manager | Opens the containing folder |
+| Copy path | Puts the full path on the clipboard |
+| Remove from recent / Discard draft | Takes the row out of the library only |
+| Move to trash… | Asks first, then moves the file to your desktop trash |
+
+Folder rows are not closable — the folder still holds the file. Use **Remove
+from library** on the folder's heading instead, which leaves every file on disk.
+Hover a row to see its full path.
 
 ## Theming
 

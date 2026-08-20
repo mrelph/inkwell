@@ -188,18 +188,49 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 
 .clear-search:hover { color: var(--text-primary); background: var(--surface-raised); }
 
+/* One scroller for the whole library, so group headings scroll with their rows
+   instead of each group scrolling inside itself. */
+.library-scroll { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: auto; padding: 0 1px; }
+
+.library-group { display: flex; flex-direction: column; }
+
 .library-label {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  min-height: 40px;
-  padding: 11px 7px 5px;
+  gap: 4px;
+  min-height: 34px;
+  padding: 11px 5px 5px;
   color: var(--text-muted);
   font-size: 10px;
   font-weight: 740;
   letter-spacing: .055em;
   text-transform: uppercase;
 }
+
+.group-count { flex: none; padding: 0 2px; font-variant-numeric: tabular-nums; }
+
+/* Source-level actions. Revealed on hover like the row menu, but always
+   reachable by keyboard — a control that is inert until hover is not a
+   control. */
+.group-action {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
+}
+
+.library-label:hover .group-action,
+.group-action:focus-visible { opacity: 1; }
+.group-action:hover { color: var(--text-primary); background: var(--surface-raised); }
 
 /* The chevron used to be decoration on a span; it now genuinely collapses the
    list, because an affordance that looks interactive has to be interactive. */
@@ -226,7 +257,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .folder-line svg { flex: none; transition: transform 140ms ease; }
 .folder-line[aria-expanded='false'] svg { transform: rotate(-90deg); }
 
-.document-list { display: flex; flex: 1; flex-direction: column; gap: 2px; min-height: 0; overflow: auto; padding: 0 1px; }
+.document-list { display: flex; flex-direction: column; gap: 2px; }
 
 /* A row is a button plus its own close control, so the row is a positioned
    wrapper rather than a single button (a button cannot nest a button). */
@@ -248,7 +279,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 
-.close-document {
+/* One control per row, not two. A single menu says what each action is; the
+   bare X that used to sit here read as "delete" when it only closed. */
+.row-menu-button {
   position: absolute;
   top: 50%;
   right: 5px;
@@ -267,9 +300,71 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
 }
 
-.document-row:hover .close-document,
-.close-document:focus-visible { opacity: 1; }
-.close-document:hover { color: var(--text-primary); background: var(--surface-raised); }
+.document-row:hover .row-menu-button,
+.row-menu-button:focus-visible { opacity: 1; }
+.row-menu-button:hover { color: var(--text-primary); background: var(--surface-raised); }
+
+/* A recent file remembered from an earlier session, not yet read back in. */
+.document-row.unopened .document-item strong { font-weight: 580; }
+.document-row.unopened .document-item > svg { opacity: .6; }
+
+.rename-form { display: flex; width: 100%; padding: 2px 1px; }
+
+.rename-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  color: var(--text-primary);
+  background: var(--surface-reader);
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--accent-tint);
+  font-size: 12px;
+  font-weight: 680;
+}
+
+/* Fixed to the viewport: the library scrolls, and a menu that scrolls with it
+   drifts away from the pointer. Clamped into the window by RowMenu, because a
+   tiled Inkwell can be small enough that an unclamped menu opens off-screen. */
+.row-menu {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 202px;
+  padding: 5px;
+  background: var(--surface-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: 11px;
+  box-shadow: 0 18px 42px color-mix(in srgb, var(--text-primary) 26%, transparent);
+}
+
+.row-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.row-menu button svg { flex: none; color: var(--text-muted); }
+.row-menu button:hover { color: var(--text-primary); background: var(--accent-tint); }
+.row-menu button:hover svg { color: var(--accent); }
+.row-menu button.separated { margin-top: 5px; border-top: 1px solid var(--line-hairline); padding-top: 10px; }
+.row-menu button.danger { color: var(--caret); }
+.row-menu button.danger svg { color: var(--caret); }
+.row-menu button.danger:hover {
+  color: var(--caret);
+  background: color-mix(in srgb, var(--caret) 14%, transparent);
+}
 
 .empty-library { padding: 10px 8px; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
 
@@ -454,6 +549,42 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .view-write { grid-template-columns: minmax(0, 1fr); }
 
 .reader-panel, .editor-panel { min-width: 0; min-height: 0; overflow: auto; }
+
+/* An empty library is a real state, not an error: everything is closed and the
+   canvas offers the three ways back in. */
+.canvas-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  min-width: 0;
+  padding: 32px 26px;
+  text-align: center;
+  background: var(--surface-reader);
+}
+
+.canvas-empty > svg { color: var(--accent); }
+.canvas-empty h2 { margin: 0; color: var(--text-primary); font-size: 19px; font-weight: 720; letter-spacing: -.01em; }
+.canvas-empty p { max-width: 46ch; margin: 0; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
+.canvas-empty-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 6px; }
+
+.canvas-empty-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 13px;
+  cursor: pointer;
+  color: var(--accent);
+  background: var(--accent-tint);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.canvas-empty-actions button:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .reader-panel { padding: clamp(28px, 6vw, 90px) clamp(22px, 8vw, 132px); background: var(--surface-reader); }
 .view-split .reader-panel { padding: clamp(24px, 4.8vw, 68px) clamp(20px, 4.2vw, 75px); border-right: 1px solid var(--line-hairline); }
 

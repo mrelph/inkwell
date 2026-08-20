@@ -1,6 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import { readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
+import { copyFile, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { loadState, saveState } from './state'
 import { resolveTheme, watchTheme, type ThemeTokens } from './theme'
 
 type DocumentFile = {
@@ -87,6 +88,42 @@ async function documentsFromArgv(argv: string[]): Promise<DocumentFile[]> {
     return readMarkdownFileSafely(resolved)
   }))
   return files.filter((file): file is DocumentFile => file !== null)
+}
+
+const exists = async (target: string) => {
+  try {
+    await stat(target)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/* A name typed into the sidebar is a *file name*, never a path: a `/` or a `..`
+   in it would move the file somewhere the user did not ask for, so those are
+   rejected rather than normalised. The Markdown extension is added when the
+   user leaves it off so a rename cannot quietly drop the file out of the
+   library it lives in. */
+const toFileName = (raw: string) => {
+  const name = raw.trim()
+  if (!name || name === '.' || name === '..') return null
+  if (name.includes('/') || name.includes('\0') || name.startsWith('.')) return null
+  if (Buffer.byteLength(name, 'utf8') > 255) return null
+  return /\.(md|mdx|markdown)$/i.test(name) ? name : `${name}.md`
+}
+
+/* `notes.md` → `notes copy.md`, then `notes copy 2.md`. Bounded so a directory
+   that cannot be written to fails fast instead of spinning. */
+async function uniqueCopyPath(source: string) {
+  const directory = path.dirname(source)
+  const extension = path.extname(source)
+  const base = path.basename(source, extension)
+  for (let attempt = 1; attempt <= 50; attempt += 1) {
+    const suffix = attempt === 1 ? ' copy' : ` copy ${attempt}`
+    const candidate = path.join(directory, `${base}${suffix}${extension}`)
+    if (!(await exists(candidate))) return candidate
+  }
+  return null
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -243,6 +280,101 @@ if (!app.requestSingleInstanceLock()) {
       } catch {
         return { folder: '', documents: [] }
       }
+    })
+
+    /* Re-reading a remembered folder on launch, and refreshing one the user has
+       already added. Unlike `document:open-folder` there is no dialog: the path
+       is one Inkwell stored itself. */
+    ipcMain.handle('document:read-folder', async (_event, folder: string) => {
+      if (typeof folder !== 'string' || !path.isAbsolute(folder)) return { folder: '', documents: [] }
+      try {
+        const details = await stat(folder)
+        if (!details.isDirectory()) return { folder: '', documents: [] }
+        return { folder, documents: await walkMarkdownFiles(folder) }
+      } catch {
+        /* Removed, renamed, or on an unmounted drive: the renderer drops it. */
+        return { folder: '', documents: [] }
+      }
+    })
+
+    /* Reopening a recent file, which the renderer holds only as a path. */
+    ipcMain.handle('document:read', async (_event, paths: string[]) => {
+      if (!Array.isArray(paths)) return []
+      const files = await Promise.all(
+        paths
+          .filter((entry): entry is string => typeof entry === 'string' && isMarkdown(entry))
+          .slice(0, 50)
+          .map(readMarkdownFileSafely)
+      )
+      return files.filter((file): file is DocumentFile => file !== null)
+    })
+
+    ipcMain.handle('state:load', () => loadState())
+    ipcMain.on('state:save', (_event, next: unknown) => { void saveState(next) })
+
+    ipcMain.handle('file:rename', async (_event, payload: { path: string; name: string }) => {
+      const name = typeof payload?.name === 'string' ? toFileName(payload.name) : null
+      if (!name || typeof payload?.path !== 'string') return { ok: false as const, reason: 'That is not a usable file name' }
+      const target = path.join(path.dirname(payload.path), name)
+      if (target === payload.path) return { ok: true as const, path: payload.path, name: path.basename(payload.path) }
+      if (await exists(target)) return { ok: false as const, reason: `${name} already exists in that folder` }
+      try {
+        await rename(payload.path, target)
+        const details = await stat(target)
+        return { ok: true as const, path: target, name, savedAt: details.mtimeMs }
+      } catch {
+        return { ok: false as const, reason: 'Could not rename that file' }
+      }
+    })
+
+    ipcMain.handle('file:duplicate', async (_event, filePath: string) => {
+      if (typeof filePath !== 'string') return null
+      try {
+        const target = await uniqueCopyPath(filePath)
+        if (!target) return null
+        await copyFile(filePath, target)
+        return await readMarkdownFileSafely(target)
+      } catch {
+        return null
+      }
+    })
+
+    /* Trash, never unlink: the desktop's trash is undoable and a Markdown note
+       the user meant to keep is not worth a permanent delete. */
+    ipcMain.handle('file:trash', async (_event, filePath: string) => {
+      if (typeof filePath !== 'string') return false
+      try {
+        await shell.trashItem(filePath)
+        return true
+      } catch {
+        return false
+      }
+    })
+
+    ipcMain.handle('file:confirm-trash', async (_event, name: string) => {
+      const window = mainWindow
+      const options = {
+        type: 'warning' as const,
+        title: 'Move to trash',
+        message: `Move ${name} to the trash?`,
+        detail: 'The file leaves the folder and goes to your desktop trash, where you can restore it.',
+        buttons: ['Cancel', 'Move to trash'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true
+      }
+      const { response } = window
+        ? await dialog.showMessageBox(window, options)
+        : await dialog.showMessageBox(options)
+      return response === 1
+    })
+
+    ipcMain.on('file:reveal', (_event, filePath: string) => {
+      if (typeof filePath === 'string') shell.showItemInFolder(filePath)
+    })
+
+    ipcMain.on('clipboard:write', (_event, text: string) => {
+      if (typeof text === 'string') clipboard.writeText(text)
     })
 
     ipcMain.handle('document:save', async (_event, payload: {

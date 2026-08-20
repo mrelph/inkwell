@@ -58,11 +58,17 @@ Local-first Markdown reader/editor: an Electron shell around a single-page React
 app. No backend and no network calls; all persistence is filesystem I/O via IPC.
 
 - `src-electron/main.ts` — owns all filesystem access (`document:open`,
-  `document:open-folder`, `document:save`, `document:confirm-discard`,
-  `theme:get`), native dialogs, the unsaved-changes close guard, the
-  single-instance lock, argv file opening, and the external-link policy
-  (`setWindowOpenHandler` + `will-navigate` hand safe schemes to
-  `shell.openExternal` and deny everything else).
+  `document:open-folder`, `document:read-folder`, `document:read`,
+  `document:save`, `document:confirm-discard`, `file:rename`, `file:duplicate`,
+  `file:trash`, `file:confirm-trash`, `file:reveal`, `clipboard:write`,
+  `state:load`, `state:save`, `theme:get`), native dialogs, the unsaved-changes
+  close guard, the single-instance lock, argv file opening, and the
+  external-link policy (`setWindowOpenHandler` + `will-navigate` hand safe
+  schemes to `shell.openExternal` and deny everything else).
+- `src-electron/state.ts` — the remembered library (folder sources, recent
+  files, last active path) as JSON in `userData`. Every field is re-validated
+  on load and written through a temp file, because it is a file the user can
+  open and mangle and it must never be able to break startup.
 - `src-electron/theme.ts` — resolves the active Omarchy theme into design tokens
   and watches for theme switches.
 - `src-electron/preload.ts` — contextBridge exposing `window.inkwell`. Typed in
@@ -72,18 +78,39 @@ app. No backend and no network calls; all persistence is filesystem I/O via IPC.
   undefined (running outside Electron) file operations no-op.
 
 **Renderer data model:** all open documents live in one `documents: MarkdownDoc[]`
-array; `activeId` selects the current one. Ids are keyed on path (`file:<path>`)
-so reopening a file resolves to the existing entry instead of duplicating it.
+array; `activeId` selects the current one, and may be `null` — an empty library
+is a legitimate state, not an error, and the canvas has an empty view for it.
+Ids are keyed on path (`file:<path>`) so reopening a file resolves to the
+existing entry instead of duplicating it. A rename changes the id, so it also
+has to move `activeId` and the recent entry.
 
-Open semantics are deliberately split, and the distinction matters:
+**Nothing replaces the library.** Every open path — open-file, add-folder, argv,
+second-instance, duplicate — appends. Each document carries a `sourceId` naming
+the group it belongs to, and the sidebar renders one group per source in a fixed
+order: folder sources, then `drafts`, then `recent`, then `samples`.
 
-- `addDocuments` — **appends**, deduped by path. Used by open-file, argv, and
-  second-instance. Discards nothing, so it needs no confirmation prompt.
-- `replaceDocuments` — **replaces** the library, treating a folder as a
-  workspace. Used only by open-folder, and gated behind `confirmDiscard`.
+- Folder sources are *sources*, not workspaces: adding one never displaces
+  another, up to `MAX_FOLDERS`. Overlapping folders are refused rather than
+  merged, because a nested source would list the same file under two headings
+  and the dedupe by path would silently drop one of them.
+- `sourceForPath` decides where an opened file lands: inside an added folder it
+  joins that folder's group, otherwise `recent`. Saving a draft runs it too, so
+  a new note saved into an added folder appears there.
+- Only `drafts`, `recent` and `samples` rows can be closed. Closing a file that
+  a folder source lists would be meaningless — the folder still holds it — so
+  those rows offer *Move to trash* and the group offers *Remove from library*
+  instead. Removing a source never touches disk.
+- The samples are first-run scaffolding: they step aside the moment real content
+  arrives, except any the user has typed into.
 
-Don't route open-file back through `replaceDocuments`; that was the original
-behaviour and it silently discarded every other open document.
+An earlier version treated a folder as a workspace that *replaced* everything
+open, which is why `confirmDiscard` exists. It is still used, but now only for
+closing dirty rows and removing a source that holds them.
+
+**Persistence** is `state.ts` behind a 400ms debounce in the renderer, gated on a
+`restored` flag so the first render cannot save an empty library over a real one.
+A folder that has gone from disk is dropped silently on restore; a recent file
+that has gone is dropped when the user tries to open it.
 
 **View modes** (`read`/`split`/`write`) are driven by CSS grid classes on
 `.document-canvas`, not separate components.
@@ -135,6 +162,20 @@ Two ways to check, in increasing fidelity:
 - Live: launch with `--remote-debugging-port=9222` and drive the real window via
   `Runtime.evaluate` over the DevTools protocol (Node's global `WebSocket` is
   enough). This is the one that catches real-DPR and real-theme issues.
+- Live but invisible: the same thing plus `--ozone-platform=headless` and
+  `--user-data-dir=<temp>`. The real main process, preload and IPC all run, and
+  nothing appears in the user's tiling layout or touches their real library.
+  `Emulation.setDeviceMetricsOverride` then resizes the CSS viewport, so every
+  breakpoint can be measured from the one window. Two limits: `--user-data-dir`
+  is also how you keep the test run out of the real `library.json`, and a native
+  dialog (`showMessageBox`, `showOpenDialog`) never resolves headless — it wedges
+  the main process, taking the DevTools endpoint down with it, so drive paths
+  that end in a dialog by calling the IPC behind it instead.
+
+`contextBridge` objects are frozen and `window.inkwell` is non-configurable, so a
+probe cannot stub the bridge to fake a file dialog. Reach the add-paths another
+way: a second instance with a file argument exercises `document:opened-externally`
+against the running window, and a pre-seeded `library.json` exercises restore.
 
 Screenshots are a poor fit here: `grim` captures whatever is composited at the
 given coordinates, so it silently grabs unrelated windows when the stack shifts.

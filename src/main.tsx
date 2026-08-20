@@ -1,4 +1,4 @@
-import { isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -6,10 +6,15 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ClipboardCopy,
   Clock3,
+  Copy,
+  Ellipsis,
   FilePlus2,
   FileText,
   FolderOpen,
+  FolderPlus,
+  History,
   LayoutPanelLeft,
   Maximize2,
   Menu,
@@ -17,9 +22,11 @@ import {
   PanelRightClose,
   PanelRightOpen,
   PencilLine,
+  RefreshCw,
   Search,
   Sparkles,
   SplitSquareHorizontal,
+  Trash2,
   X
 } from 'lucide-react'
 import '@fontsource-variable/manrope'
@@ -35,20 +42,52 @@ type MarkdownDoc = {
   name: string
   content: string
   path?: string
-  source?: string
+  /** Which group in the library this belongs to — see SAMPLES/DRAFTS/RECENT. */
+  sourceId: string
   isSample?: boolean
   isDirty?: boolean
   /** mtime Inkwell last saw on disk, used to detect an external edit. */
   savedAt?: number
 }
 
+/** A folder the user added to the library. Folders are sources, not workspaces:
+    adding one never displaces another. */
+type FolderSource = { id: string; name: string; path: string }
+
 type Heading = { level: number; text: string; id: string }
+
+/* The three groups that are not folders. Samples are first-run scaffolding,
+   drafts are notes with no file yet, recent is everything opened from outside
+   an added folder. */
+const SAMPLES = 'samples'
+const DRAFTS = 'drafts'
+const RECENT = 'recent'
+
+const MAX_FOLDERS = 8
+const MAX_RECENT = 12
+
+const folderIdFor = (folder: string) => `folder:${folder}`
+const folderLabel = (folder: string) => folder.split('/').filter(Boolean).pop() ?? folder
+
+/* Nested sources would list the same file twice under two headings, and the
+   dedupe by path would silently drop one of them. Overlap is refused instead. */
+const isInside = (child: string, parent: string) =>
+  child === parent || child.startsWith(parent.endsWith('/') ? parent : `${parent}/`)
+
+const toDoc = (file: DocumentFile, sourceId: string): MarkdownDoc => ({
+  id: `file:${file.path}`,
+  name: file.name,
+  path: file.path,
+  content: file.content,
+  savedAt: file.savedAt,
+  sourceId
+})
 
 const seedDocuments: MarkdownDoc[] = [
   {
     id: 'welcome',
     name: 'Welcome to Inkwell.md',
-    source: 'Sample documents',
+    sourceId: SAMPLES,
     isSample: true,
     content: `# Welcome to Inkwell
 
@@ -58,12 +97,13 @@ Inkwell is a quiet place to read and shape Markdown. It keeps the source close a
 
 Switch between a focused reading view, a clean writing view, or place them side by side. The document stays local to your machine; there is no account and no hidden workspace.
 
-> This is a sample document. Open a folder or a Markdown file to begin working with your own notes.
+> This is a sample document. Add a folder or open a Markdown file to begin working with your own notes — these samples step aside as soon as you do.
 
 ## A few useful details
 
 - **Open files** with \`Ctrl+O\`
-- **Open folders** with \`Ctrl+Shift+O\`
+- **Add a folder** to the library with \`Ctrl+Shift+O\`
+- **Rename, duplicate, reveal or trash** a file from the ⋯ menu on its row
 - **Save** with \`Ctrl+S\`
 - **New note** with \`Ctrl+N\`
 - Switch views with \`Ctrl+1\`, \`Ctrl+2\`, \`Ctrl+3\`
@@ -84,7 +124,7 @@ Happy writing.`
   {
     id: 'studio-notes',
     name: 'Studio notes.md',
-    source: 'Sample documents',
+    sourceId: SAMPLES,
     isSample: true,
     content: `# Studio notes
 
@@ -104,7 +144,7 @@ Keep one generous margin around the thing you are trying to understand.`
   {
     id: 'reading-list',
     name: 'Reading list.md',
-    source: 'Sample documents',
+    sourceId: SAMPLES,
     isSample: true,
     content: `# Reading list
 
@@ -121,7 +161,7 @@ The notes that are worth returning to usually have one unfinished edge.`
   {
     id: 'field-guide',
     name: 'Field guide.md',
-    source: 'Sample documents',
+    sourceId: SAMPLES,
     isSample: true,
     content: `# A field guide to useful notes
 
@@ -248,10 +288,143 @@ function Reader({ content }: { content: string }) {
     </article>
   )
 }
+type LibraryKind = 'folder' | 'drafts' | 'recent' | 'samples'
+
+/* A row is what the pane shows, which is not the same as a document: a recent
+   file that is not open has a path and a name but no content behind it yet. */
+type LibraryRow = {
+  key: string
+  name: string
+  path?: string
+  doc?: MarkdownDoc
+  kind: LibraryKind
+  meta: string
+}
+
+type LibraryGroup = {
+  id: string
+  name: string
+  kind: LibraryKind
+  path?: string
+  rows: LibraryRow[]
+}
+
+type MenuItem = {
+  key: string
+  label: string
+  icon: ReactNode
+  run: () => void
+  danger?: boolean
+  separated?: boolean
+}
+
+/* The row actions. Opened by the row's ⋯ button or a right-click, positioned at
+   the pointer and clamped into the window — Inkwell can be tiled into a very
+   small rectangle, where an unclamped menu would open off-screen. */
+function RowMenu({ items, origin, onClose }: {
+  items: MenuItem[]
+  origin: { x: number; y: number }
+  onClose: () => void
+}) {
+  const panel = useRef<HTMLDivElement>(null)
+  const ranItem = useRef(false)
+  const [placed, setPlaced] = useState({ x: origin.x, y: origin.y, ready: false })
+
+  useLayoutEffect(() => {
+    const element = panel.current
+    if (!element) return
+    const { width, height } = element.getBoundingClientRect()
+    setPlaced({
+      x: Math.max(6, Math.min(origin.x, window.innerWidth - width - 6)),
+      y: Math.max(6, Math.min(origin.y, window.innerHeight - height - 6)),
+      ready: true
+    })
+  }, [origin.x, origin.y])
+
+  /* Focus only once the menu is placed: it is hidden until then, and a hidden
+     element cannot take focus — which left arrow keys doing nothing. */
+  useEffect(() => {
+    if (!placed.ready) return
+    panel.current?.querySelector<HTMLButtonElement>('button')?.focus()
+  }, [placed.ready])
+
+  /* Dismissing without choosing anything hands focus back to the control that
+     opened the menu. Running an item does not: the item may well have moved
+     focus itself, as Rename does. */
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null
+    return () => { if (!ranItem.current) opener?.focus?.() }
+  }, [])
+
+  useEffect(() => {
+    const dismiss = () => onClose()
+    const onPointerDown = (event: PointerEvent) => {
+      if (!panel.current?.contains(event.target as Node)) onClose()
+    }
+    window.addEventListener('resize', dismiss)
+    window.addEventListener('blur', dismiss)
+    /* Capture phase: the library scrolls inside its own container, so a bubbling
+       listener on window would never see it and the menu would drift. */
+    document.addEventListener('scroll', dismiss, true)
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => {
+      window.removeEventListener('resize', dismiss)
+      window.removeEventListener('blur', dismiss)
+      document.removeEventListener('scroll', dismiss, true)
+      document.removeEventListener('pointerdown', onPointerDown, true)
+    }
+  }, [onClose])
+
+  /* Escape must not fall through to the window handler, which would also leave
+     focus writing or close the outline. */
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation()
+      onClose()
+      return
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    event.preventDefault()
+    const buttons = Array.from(panel.current?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+    if (!buttons.length) return
+    const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+    const next = event.key === 'ArrowDown' ? index + 1 : index - 1
+    buttons[(next + buttons.length) % buttons.length].focus()
+  }
+
+  return (
+    <div
+      ref={panel}
+      className="row-menu"
+      role="menu"
+      aria-label="Document actions"
+      onKeyDown={onKeyDown}
+      style={{ left: placed.x, top: placed.y, visibility: placed.ready ? 'visible' : 'hidden' }}
+    >
+      {items.map((item) => (
+        <button
+          key={item.key}
+          role="menuitem"
+          className={`${item.danger ? 'danger' : ''} ${item.separated ? 'separated' : ''}`.trim()}
+          onClick={() => { ranItem.current = true; onClose(); item.run() }}
+        >
+          {item.icon} <span>{item.label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
 
 function App() {
-  const [documents, setDocuments] = useState(seedDocuments)
-  const [activeId, setActiveId] = useState(seedDocuments[0].id)
+  const [documents, setDocuments] = useState<MarkdownDoc[]>([])
+  const [folders, setFolders] = useState<FolderSource[]>([])
+  const [recent, setRecent] = useState<RecentEntry[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState<string[]>([])
+  /* Nothing is persisted until the stored library has been read back, or the
+     first render would save an empty library over a real one. */
+  const [restored, setRestored] = useState(false)
+  const [introDone, setIntroDone] = useState(false)
   const [view, setView] = useState<ViewMode>('split')
   const [query, setQuery] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -261,37 +434,133 @@ function App() {
     () => !window.matchMedia('(max-width: 1120px)').matches
   )
   const [focusMode, setFocusMode] = useState(false)
-  const [libraryOpen, setLibraryOpen] = useState(true)
-  const [notice, setNotice] = useState('Sample document · unsaved')
-  const [folderName, setFolderName] = useState('Sample documents')
+  const [notice, setNotice] = useState('Reading your library')
+  const [menu, setMenu] = useState<{ row: LibraryRow; x: number; y: number } | null>(null)
+  const [renamingKey, setRenamingKey] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
   const editorRef = useRef<HTMLTextAreaElement>(null)
   const draftSerial = useRef(0)
+  /* Escape unmounts the rename input, which fires its blur handler on the way
+     out. Without this the cancel would be committed as a rename. */
+  const renameCanceled = useRef(false)
 
-  const activeDocument = documents.find((doc) => doc.id === activeId) ?? documents[0]
-  const headings = useMemo(() => getHeadings(activeDocument.content), [activeDocument.content])
+  const activeDocument = documents.find((doc) => doc.id === activeId)
+  const headings = useMemo(() => getHeadings(activeDocument?.content ?? ''), [activeDocument?.content])
   const wordCount = useMemo(
-    () => activeDocument.content.trim().split(/\s+/).filter(Boolean).length,
-    [activeDocument.content]
+    () => (activeDocument?.content ?? '').trim().split(/\s+/).filter(Boolean).length,
+    [activeDocument?.content]
   )
-  const filteredDocuments = useMemo(() => {
-    const normalized = query.trim().toLowerCase()
-    if (!normalized) return documents
-    return documents.filter((doc) => `${doc.name} ${doc.content}`.toLowerCase().includes(normalized))
-  }, [documents, query])
 
-  /* A tiling compositor resizes the window immediately after it is created, so
-     the width at mount is not the width the user gets. Re-evaluate whenever the
-     outline loses its own column and fold it away rather than leaving it
-     overlaying the document. */
-  useEffect(() => {
-    const compact = window.matchMedia('(max-width: 1120px)')
-    const sync = () => {
-      if (compact.matches) setOutlineOpen(false)
-    }
-    sync()
-    compact.addEventListener('change', sync)
-    return () => compact.removeEventListener('change', sync)
+  /* A file opened from a folder already in the library belongs to that folder's
+     group, wherever it was opened from. Everything else is recent. */
+  const sourceForPath = useCallback(
+    (filePath: string) => folders.find((folder) => isInside(filePath, folder.path))?.id ?? RECENT,
+    [folders]
+  )
+
+  const rememberRecent = useCallback((files: { path: string; name: string }[]) => {
+    if (!files.length) return
+    const openedAt = Date.now()
+    setRecent((current) => {
+      const fresh = files.map((file) => ({ path: file.path, name: file.name, openedAt }))
+      const rest = current.filter((entry) => !fresh.some((item) => item.path === entry.path))
+      return [...fresh, ...rest].slice(0, MAX_RECENT)
+    })
   }, [])
+
+  /* The samples are scaffolding for an empty first run. The moment real work
+     arrives they step aside — an edited one stays, because discarding a
+     document someone has typed into is never scaffolding behaviour. */
+  const withoutSamples = (docs: MarkdownDoc[]) => docs.filter((doc) => !doc.isSample || doc.isDirty)
+
+  const forgetPath = useCallback((filePath: string) => {
+    setDocuments((current) => current.filter((doc) => doc.path !== filePath))
+    setRecent((current) => current.filter((entry) => entry.path !== filePath))
+    setActiveId((current) => (current === `file:${filePath}` ? null : current))
+  }, [])
+
+  /* Restore the library: the folders that were open, the recent list, and the
+     document that was in front. A folder that has since been deleted or
+     unmounted is dropped rather than reported — it is not an error that the
+     user needs to answer for. */
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const bridge = window.inkwell
+      if (!bridge?.loadState) {
+        setDocuments(seedDocuments)
+        setActiveId(seedDocuments[0].id)
+        setNotice('Sample document · unsaved')
+        setRestored(true)
+        return
+      }
+
+      let state: InkwellState
+      try {
+        state = await bridge.loadState()
+      } catch {
+        state = { folders: [], recent: [], introDone: false }
+      }
+
+      const results = await Promise.all(state.folders.map(async (folder) => {
+        try {
+          return await bridge.readFolder(folder)
+        } catch {
+          return { folder: '', documents: [] as DocumentFile[] }
+        }
+      }))
+      if (cancelled) return
+
+      const liveFolders: FolderSource[] = []
+      const restoredDocs: MarkdownDoc[] = []
+      results.forEach((result) => {
+        if (!result.folder) return
+        const id = folderIdFor(result.folder)
+        liveFolders.push({ id, name: folderLabel(result.folder), path: result.folder })
+        result.documents.forEach((file) => {
+          if (!restoredDocs.some((doc) => doc.path === file.path)) restoredDocs.push(toDoc(file, id))
+        })
+      })
+
+      /* The document you were last in, when it is not inside one of the folders
+         that just came back. */
+      if (state.activePath && !restoredDocs.some((doc) => doc.path === state.activePath)) {
+        const reopened = await bridge.readDocuments([state.activePath]).catch(() => [] as DocumentFile[])
+        reopened.forEach((file) => restoredDocs.unshift(toDoc(file, RECENT)))
+      }
+      if (cancelled) return
+
+      const hasLibrary = restoredDocs.length > 0 || state.recent.length > 0
+      setFolders(liveFolders)
+      setRecent(state.recent)
+      setIntroDone(state.introDone || hasLibrary)
+      setDocuments(hasLibrary ? restoredDocs : seedDocuments)
+      const active = restoredDocs.find((doc) => doc.path === state.activePath) ?? restoredDocs[0]
+      setActiveId(hasLibrary ? active?.id ?? null : seedDocuments[0].id)
+      setNotice(
+        hasLibrary
+          ? `${restoredDocs.length} ${restoredDocs.length === 1 ? 'document' : 'documents'} in your library`
+          : 'Sample document · unsaved'
+      )
+      setRestored(true)
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  /* Persist on a short delay: typing in the editor does not touch any of this,
+     but adding and closing documents can arrive in bursts. */
+  useEffect(() => {
+    if (!restored) return
+    const handle = window.setTimeout(() => {
+      window.inkwell?.saveState?.({
+        folders: folders.map((folder) => folder.path),
+        recent: recent.slice(0, MAX_RECENT),
+        activePath: activeDocument?.path,
+        introDone
+      })
+    }, 400)
+    return () => window.clearTimeout(handle)
+  }, [restored, folders, recent, activeDocument?.path, introDone])
 
   /* Follow the active Omarchy theme. Tokens arrive as CSS custom properties and
      are applied to :root, so a theme switch repaints without a reload. */
@@ -308,86 +577,124 @@ function App() {
     return window.inkwell?.onThemeChange?.(apply)
   }, [])
 
-  /* Adding is the default for opening files, whether they arrive from the file
-     dialog, argv, or a second launch: nothing already open is discarded, and a
-     file already in the library is activated rather than duplicated. Ids are
-     keyed on path so re-opening resolves to the same entry. */
-  const addDocuments = useCallback((incoming: DocumentFile[], source: string) => {
-    if (!incoming.length) return
-    const mapped: MarkdownDoc[] = incoming.map((file) => ({
-      id: `file:${file.path}`,
-      name: file.name,
-      path: file.path,
-      content: file.content,
-      savedAt: file.savedAt,
-      source
-    }))
-    setDocuments((current) => {
-      const fresh = mapped.filter((doc) => !current.some((existing) => existing.path === doc.path))
-      return fresh.length ? [...fresh, ...current] : current
-    })
-    setActiveId(mapped[0].id)
-    setNotice(mapped.length === 1
-      ? `Opened ${mapped[0].name}`
-      : `Opened ${mapped.length} files`)
+  /* A tiling compositor resizes the window immediately after it is created, so
+     the width at mount is not the width the user gets. Re-evaluate whenever the
+     outline loses its own column and fold it away rather than leaving it
+     overlaying the document. */
+  useEffect(() => {
+    const compact = window.matchMedia('(max-width: 1120px)')
+    const sync = () => {
+      if (compact.matches) setOutlineOpen(false)
+    }
+    sync()
+    compact.addEventListener('change', sync)
+    return () => compact.removeEventListener('change', sync)
   }, [])
+
+  /* Opening files only ever adds: nothing already in the library is discarded,
+     and a file that is already there is activated rather than duplicated. Ids
+     are keyed on path so re-opening resolves to the same entry. */
+  const addDocuments = useCallback((incoming: DocumentFile[]) => {
+    if (!incoming.length) return
+    setDocuments((current) => {
+      const kept = withoutSamples(current)
+      const fresh = incoming
+        .filter((file) => !kept.some((doc) => doc.path === file.path))
+        .map((file) => toDoc(file, sourceForPath(file.path)))
+      return fresh.length ? [...fresh, ...kept] : kept
+    })
+    setActiveId(`file:${incoming[0].path}`)
+    rememberRecent(incoming)
+    setIntroDone(true)
+    setNotice(incoming.length === 1 ? `Opened ${incoming[0].name}` : `Opened ${incoming.length} files`)
+  }, [rememberRecent, sourceForPath])
 
   useEffect(() => {
-    return window.inkwell?.onOpenExternal?.((incoming) => addDocuments(incoming, 'Opened files'))
+    return window.inkwell?.onOpenExternal?.((incoming) => addDocuments(incoming))
   }, [addDocuments])
 
-  const replaceDocuments = useCallback((incoming: DocumentFile[], source: string) => {
-    if (!incoming.length) {
-      setNotice('No Markdown files found in that folder')
-      return
-    }
-    const mapped: MarkdownDoc[] = incoming.map((file, index) => ({
-      id: `file:${file.path}:${index}`,
-      name: file.name,
-      path: file.path,
-      content: file.content,
-      savedAt: file.savedAt,
-      source
-    }))
-    setDocuments(mapped)
-    setActiveId(mapped[0].id)
-    setFolderName(source)
-    setNotice(`${mapped.length} local ${mapped.length === 1 ? 'file' : 'files'} opened`)
-  }, [])
-
-  /* Opening replaces the whole library, so unsaved work must be confirmed
-     first — the window-close path already guards this. */
-  const confirmDiscard = useCallback(async () => {
-    const dirty = documents.filter((doc) => doc.isDirty)
-    if (!dirty.length) return true
-    const names = dirty.map((doc) => clampTitle(doc.name)).join(', ')
-    const discard = await window.inkwell?.confirmDiscard?.(names)
-    return discard !== false
-  }, [documents])
-
-  /* Opening files adds to the library, so there is nothing to discard and no
-     prompt to answer. Only opening a folder replaces the workspace. */
   const openFiles = useCallback(async () => {
     try {
       const incoming = await window.inkwell?.openDocuments()
-      if (incoming?.length) addDocuments(incoming, 'Opened files')
+      if (incoming?.length) addDocuments(incoming)
     } catch {
       setNotice('Could not open those files — check permissions and try again')
     }
   }, [addDocuments])
 
-  const openFolder = useCallback(async () => {
-    if (!(await confirmDiscard())) return
+  /* Adding a folder is additive too. It is a *source*: a place the library
+     watches, not a workspace that replaces what is already open. */
+  const addFolder = useCallback(async () => {
     try {
       const result = await window.inkwell?.openFolder()
       if (!result?.folder) return
-      replaceDocuments(result.documents, result.folder.split('/').filter(Boolean).pop() ?? 'Folder')
+      const overlap = folders.find((folder) => isInside(result.folder, folder.path) || isInside(folder.path, result.folder))
+      if (overlap) {
+        setNotice(overlap.path === result.folder
+          ? `${overlap.name} is already in the library`
+          : `That folder overlaps ${overlap.name}, which is already here`)
+        return
+      }
+      if (folders.length >= MAX_FOLDERS) {
+        setNotice(`${MAX_FOLDERS} folders is the limit — remove one first`)
+        return
+      }
+      const id = folderIdFor(result.folder)
+      const source: FolderSource = { id, name: folderLabel(result.folder), path: result.folder }
+      setFolders((current) => [...current, source])
+      setDocuments((current) => {
+        const kept = withoutSamples(current)
+        /* A file opened ad hoc that lives in this folder now belongs to it. */
+        const adopted = kept.map((doc) => (doc.path && isInside(doc.path, result.folder) ? { ...doc, sourceId: id } : doc))
+        const fresh = result.documents
+          .filter((file) => !adopted.some((doc) => doc.path === file.path))
+          .map((file) => toDoc(file, id))
+        return [...adopted, ...fresh]
+      })
+      setIntroDone(true)
+      setActiveId((current) => current ?? (result.documents[0] ? `file:${result.documents[0].path}` : null))
+      setNotice(`Added ${source.name} · ${result.documents.length} ${result.documents.length === 1 ? 'file' : 'files'}`)
     } catch {
       setNotice('Could not read that folder — check permissions and try again')
     }
-  }, [confirmDiscard, replaceDocuments])
+  }, [folders])
+
+  /* Re-reads a folder from disk. Documents with unsaved edits are kept as they
+     are: a refresh must never be a way to lose typing. */
+  const refreshFolder = useCallback(async (source: FolderSource) => {
+    const result = await window.inkwell?.readFolder(source.path).catch(() => null)
+    if (!result?.folder) {
+      setNotice(`${source.name} is no longer on disk`)
+      return
+    }
+    setDocuments((current) => {
+      const kept = current.filter((doc) => doc.sourceId !== source.id || doc.isDirty)
+      const fresh = result.documents
+        .filter((file) => !kept.some((doc) => doc.path === file.path))
+        .map((file) => toDoc(file, source.id))
+      return [...kept, ...fresh]
+    })
+    setNotice(`Refreshed ${source.name} · ${result.documents.length} ${result.documents.length === 1 ? 'file' : 'files'}`)
+  }, [])
+
+  const confirmDiscardOf = useCallback(async (dirty: MarkdownDoc[]) => {
+    if (!dirty.length) return true
+    const names = dirty.map((doc) => clampTitle(doc.name)).join(', ')
+    const discard = await window.inkwell?.confirmDiscard?.(names)
+    return discard !== false
+  }, [])
+
+  const removeFolder = useCallback(async (source: FolderSource) => {
+    const owned = documents.filter((doc) => doc.sourceId === source.id)
+    if (!(await confirmDiscardOf(owned.filter((doc) => doc.isDirty)))) return
+    setFolders((current) => current.filter((folder) => folder.id !== source.id))
+    setDocuments((current) => current.filter((doc) => doc.sourceId !== source.id))
+    setActiveId((current) => (owned.some((doc) => doc.id === current) ? null : current))
+    setNotice(`Removed ${source.name} from the library`)
+  }, [confirmDiscardOf, documents])
 
   const updateContent = (content: string) => {
+    if (!activeDocument) return
     setDocuments((current) => current.map((doc) => doc.id === activeId ? { ...doc, content, isDirty: true } : doc))
     setNotice('Edited · not saved')
   }
@@ -399,19 +706,20 @@ function App() {
       id: `draft:${serial}`,
       name: serial === 1 ? 'Untitled note.md' : `Untitled note ${serial}.md`,
       content: '# Untitled note\n\nStart with the smallest true sentence.\n',
-      source: 'Scratch',
+      sourceId: DRAFTS,
       isDirty: true
     }
-    setDocuments((current) => [newDocument, ...current])
+    setDocuments((current) => [newDocument, ...withoutSamples(current)])
     setActiveId(newDocument.id)
+    setIntroDone(true)
     setView('write')
     setNotice('New local draft · choose Save to place it')
     window.setTimeout(() => editorRef.current?.focus(), 40)
   }, [])
 
   const saveDocument = useCallback(async (forceSaveAs = false) => {
-    if (!window.inkwell) return
-    const target = documents.find((doc) => doc.id === activeId) ?? documents[0]
+    if (!window.inkwell || !activeDocument) return
+    const target = activeDocument
     try {
       const saved = await window.inkwell.saveDocument({
         content: target.content,
@@ -420,38 +728,222 @@ function App() {
         knownMtime: target.savedAt
       })
       if (saved.canceled || !saved.path) return
-      const fileName = saved.path.split('/').pop() ?? target.name
+      const savedPath = saved.path
+      const fileName = savedPath.split('/').pop() ?? target.name
+      /* A draft that has just been given a path stops being a draft: it moves
+         to the folder that now holds it, or to recent. */
+      const sourceId = sourceForPath(savedPath)
       setDocuments((current) => current.map((doc) => doc.id === target.id ? {
         ...doc,
-        path: saved.path,
+        id: `file:${savedPath}`,
+        path: savedPath,
         name: fileName,
+        sourceId,
         savedAt: saved.savedAt,
         isSample: false,
         isDirty: false
       } : doc))
+      setActiveId(`file:${savedPath}`)
+      if (sourceId === RECENT) rememberRecent([{ path: savedPath, name: fileName }])
       setNotice(`Saved ${fileName}`)
     } catch {
       setNotice('Could not save this document — try Save As again')
     }
-  }, [activeId, documents])
+  }, [activeDocument, rememberRecent, sourceForPath])
 
-  const closeDocument = useCallback(async (id: string) => {
-    const index = documents.findIndex((doc) => doc.id === id)
-    if (index === -1) return
-    if (documents.length === 1) {
-      setNotice('That is the only open document')
+  /* Closing takes a document out of the library. For a folder file that would
+     be meaningless — the folder still holds it — so only drafts, samples and
+     recent files offer it. */
+  const closeRow = useCallback(async (row: LibraryRow) => {
+    const doc = row.doc
+    if (doc?.isDirty && !(await confirmDiscardOf([doc]))) return
+    if (doc) {
+      const index = documents.findIndex((item) => item.id === doc.id)
+      const remaining = documents.filter((item) => item.id !== doc.id)
+      setDocuments(remaining)
+      /* Land on the neighbour rather than nothing, and on nothing when that was
+         the last document — an empty library is a legitimate state. */
+      if (activeId === doc.id) setActiveId(remaining[Math.min(index, remaining.length - 1)]?.id ?? null)
+    }
+    if (row.kind === 'recent' && row.path) setRecent((current) => current.filter((entry) => entry.path !== row.path))
+    setNotice(row.kind === 'recent'
+      ? `Removed ${clampTitle(row.name)} from recent`
+      : `Closed ${clampTitle(row.name)}`)
+  }, [activeId, confirmDiscardOf, documents])
+
+  /* Opening a row that has never been loaded — a recent file from a previous
+     session. Everything else is already in memory and just becomes active. */
+  const openRow = useCallback(async (row: LibraryRow) => {
+    if (row.doc) {
+      setActiveId(row.doc.id)
       return
     }
-    const target = documents[index]
-    if (target.isDirty) {
-      const discard = await window.inkwell?.confirmDiscard?.(clampTitle(target.name))
-      if (discard === false) return
+    if (!row.path) return
+    const files = await window.inkwell?.readDocuments([row.path]).catch(() => [] as DocumentFile[])
+    if (!files?.length) {
+      setNotice(`${clampTitle(row.name)} is no longer at that path`)
+      forgetPath(row.path)
+      return
     }
-    const remaining = documents.filter((doc) => doc.id !== id)
-    setDocuments(remaining)
-    if (id === activeId) setActiveId(remaining[Math.min(index, remaining.length - 1)].id)
-    setNotice(`Closed ${clampTitle(target.name)}`)
-  }, [activeId, documents])
+    addDocuments(files)
+  }, [addDocuments, forgetPath])
+
+  const startRename = useCallback((row: LibraryRow) => {
+    renameCanceled.current = false
+    setRenamingKey(row.key)
+    setRenameDraft(row.name)
+  }, [])
+
+  const commitRename = useCallback(async (row: LibraryRow) => {
+    const nextName = renameDraft.trim()
+    setRenamingKey(null)
+    if (renameCanceled.current) {
+      renameCanceled.current = false
+      return
+    }
+    if (!row.path || !nextName || nextName === row.name) return
+    const result = await window.inkwell?.renameDocument({ path: row.path, name: nextName })
+    if (!result) return
+    if (!result.ok) {
+      setNotice(result.reason)
+      return
+    }
+    const previousPath = row.path
+    setDocuments((current) => current.map((doc) => doc.path === previousPath ? {
+      ...doc,
+      id: `file:${result.path}`,
+      path: result.path,
+      name: result.name,
+      savedAt: result.savedAt ?? doc.savedAt
+    } : doc))
+    setRecent((current) => current.map((entry) => entry.path === previousPath
+      ? { ...entry, path: result.path, name: result.name }
+      : entry))
+    setActiveId((current) => (current === `file:${previousPath}` ? `file:${result.path}` : current))
+    setNotice(`Renamed to ${clampTitle(result.name)}`)
+  }, [renameDraft])
+
+  const duplicateRow = useCallback(async (row: LibraryRow) => {
+    if (!row.path) return
+    const file = await window.inkwell?.duplicateDocument(row.path).catch(() => null)
+    if (!file) {
+      setNotice(`Could not duplicate ${clampTitle(row.name)}`)
+      return
+    }
+    setDocuments((current) => [toDoc(file, sourceForPath(file.path)), ...withoutSamples(current)])
+    setActiveId(`file:${file.path}`)
+    setNotice(`Duplicated as ${clampTitle(file.name)}`)
+  }, [sourceForPath])
+
+  const trashRow = useCallback(async (row: LibraryRow) => {
+    if (!row.path) return
+    const confirmed = await window.inkwell?.confirmTrash(row.name)
+    if (confirmed !== true) return
+    const trashed = await window.inkwell?.trashDocument(row.path).catch(() => false)
+    if (!trashed) {
+      setNotice(`Could not move ${clampTitle(row.name)} to the trash`)
+      return
+    }
+    forgetPath(row.path)
+    setNotice(`Moved ${clampTitle(row.name)} to the trash`)
+  }, [forgetPath])
+
+  const menuItemsFor = useCallback((row: LibraryRow): MenuItem[] => {
+    const items: MenuItem[] = [
+      { key: 'open', label: row.doc ? 'Open' : 'Open file', icon: <BookOpen size={14} />, run: () => void openRow(row) }
+    ]
+    if (row.path) {
+      items.push(
+        { key: 'rename', label: 'Rename…', icon: <PencilLine size={14} />, run: () => startRename(row) },
+        { key: 'duplicate', label: 'Duplicate', icon: <Copy size={14} />, run: () => void duplicateRow(row) },
+        { key: 'reveal', label: 'Reveal in file manager', icon: <FolderOpen size={14} />, run: () => window.inkwell?.revealDocument(row.path!) },
+        { key: 'copy', label: 'Copy path', icon: <ClipboardCopy size={14} />, run: () => { window.inkwell?.copyText(row.path!); setNotice('Path copied') } }
+      )
+    }
+    if (row.kind !== 'folder') {
+      items.push({
+        key: 'close',
+        separated: true,
+        label: row.kind === 'recent' ? 'Remove from recent' : row.kind === 'samples' ? 'Dismiss sample' : 'Discard draft',
+        icon: <X size={14} />,
+        run: () => void closeRow(row)
+      })
+    }
+    if (row.path) {
+      items.push({
+        key: 'trash',
+        label: 'Move to trash…',
+        icon: <Trash2 size={14} />,
+        danger: true,
+        separated: row.kind === 'folder',
+        run: () => void trashRow(row)
+      })
+    }
+    return items
+  }, [closeRow, duplicateRow, openRow, startRename, trashRow])
+
+  /* One group per source, in a fixed order: the folders you chose, then the
+     drafts that have nowhere to live yet, then recent files, then the samples
+     if they are still around. */
+  const groups = useMemo<LibraryGroup[]>(() => {
+    const normalized = query.trim().toLowerCase()
+    const matchesDoc = (doc: MarkdownDoc) => !normalized || `${doc.name} ${doc.content}`.toLowerCase().includes(normalized)
+    const matchesName = (name: string) => !normalized || name.toLowerCase().includes(normalized)
+    const rowFor = (doc: MarkdownDoc, kind: LibraryKind): LibraryRow => ({
+      key: doc.id,
+      name: doc.name,
+      path: doc.path,
+      doc,
+      kind,
+      meta: doc.isSample ? 'Sample' : doc.path ? 'Local file' : 'Draft'
+    })
+
+    const list: LibraryGroup[] = folders.map((folder) => ({
+      id: folder.id,
+      name: folder.name,
+      kind: 'folder' as const,
+      path: folder.path,
+      rows: documents
+        .filter((doc) => doc.sourceId === folder.id && matchesDoc(doc))
+        .sort((first, second) => first.name.localeCompare(second.name))
+        .map((doc) => rowFor(doc, 'folder'))
+    }))
+
+    const drafts = documents.filter((doc) => doc.sourceId === DRAFTS && matchesDoc(doc)).map((doc) => rowFor(doc, 'drafts'))
+    if (drafts.length) list.push({ id: DRAFTS, name: 'Drafts', kind: 'drafts', rows: drafts })
+
+    /* Recent holds two kinds of row: files open in this session, and files
+       remembered from an earlier one that have not been read back yet. A file
+       inside an added folder is listed there instead of twice. */
+    const openRecent = documents.filter((doc) => doc.sourceId === RECENT)
+    const seen = new Set<string>()
+    const recentRows: LibraryRow[] = []
+    openRecent.forEach((doc) => {
+      if (doc.path) seen.add(doc.path)
+      if (matchesDoc(doc)) recentRows.push(rowFor(doc, 'recent'))
+    })
+    recent.forEach((entry) => {
+      if (seen.has(entry.path)) return
+      if (folders.some((folder) => isInside(entry.path, folder.path))) return
+      seen.add(entry.path)
+      if (matchesName(entry.name)) {
+        recentRows.push({ key: `recent:${entry.path}`, name: entry.name, path: entry.path, kind: 'recent', meta: 'Not open' })
+      }
+    })
+    if (recentRows.length) list.push({ id: RECENT, name: 'Recent', kind: 'recent', rows: recentRows })
+
+    const samples = documents.filter((doc) => doc.sourceId === SAMPLES && matchesDoc(doc)).map((doc) => rowFor(doc, 'samples'))
+    if (samples.length) list.push({ id: SAMPLES, name: 'Sample documents', kind: 'samples', rows: samples })
+
+    return normalized ? list.filter((group) => group.rows.length) : list
+  }, [documents, folders, query, recent])
+
+  const rowCount = groups.reduce((total, group) => total + group.rows.length, 0)
+  /* A search expands everything: a collapsed group hiding the only match reads
+     as "no results". */
+  const isOpenGroup = (group: LibraryGroup) => Boolean(query.trim()) || !collapsed.includes(group.id)
+  const toggleGroup = (id: string) =>
+    setCollapsed((current) => current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id])
 
   /* Focus writing is orthogonal to the view mode rather than a fourth mode:
      focus + split is a legitimate combination. Reading has no writing surface,
@@ -473,8 +965,8 @@ function App() {
 
   /* Keep the latest handlers in a ref so the global listener attaches once
      instead of being torn down and rebuilt on every render. */
-  const actions = useRef({ saveDocument, openFiles, openFolder, createDocument, setView, setSidebarOpen, setOutlineOpen, toggleFocus, toggleSplit, focusMode })
-  actions.current = { saveDocument, openFiles, openFolder, createDocument, setView, setSidebarOpen, setOutlineOpen, toggleFocus, toggleSplit, focusMode }
+  const actions = useRef({ saveDocument, openFiles, addFolder, createDocument, setView, setSidebarOpen, setOutlineOpen, toggleFocus, toggleSplit, focusMode })
+  actions.current = { saveDocument, openFiles, addFolder, createDocument, setView, setSidebarOpen, setOutlineOpen, toggleFocus, toggleSplit, focusMode }
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -495,7 +987,7 @@ function App() {
         void current.saveDocument(event.shiftKey)
       } else if (key === 'o') {
         claim()
-        if (event.shiftKey) void current.openFolder()
+        if (event.shiftKey) void current.addFolder()
         else void current.openFiles()
       } else if (key === 'n') {
         claim()
@@ -532,11 +1024,11 @@ function App() {
 
   return (
     <main className={shellClass}>
-      <aside className="sidebar" aria-label="Documents">
+      <aside className="sidebar" aria-label="Library">
         <div className="sidebar-actions">
           <button className="new-note" title="New note (Ctrl+N)" onClick={createDocument}><FilePlus2 size={16} strokeWidth={1.8} /> New note</button>
-          <button className="icon-button" aria-label="Open Markdown file" title="Open file — adds to the library (Ctrl+O)" onClick={() => void openFiles()}><FileText size={18} strokeWidth={1.7} /></button>
-          <button className="icon-button" aria-label="Open folder" title="Open folder — replaces the library (Ctrl+Shift+O)" onClick={() => void openFolder()}><FolderOpen size={18} strokeWidth={1.7} /></button>
+          <button className="icon-button" aria-label="Open Markdown file" title="Open a file — adds it to Recent (Ctrl+O)" onClick={() => void openFiles()}><FileText size={18} strokeWidth={1.7} /></button>
+          <button className="icon-button" aria-label="Add folder to the library" title="Add a folder — keeps its Markdown in the library (Ctrl+Shift+O)" onClick={() => void addFolder()}><FolderPlus size={18} strokeWidth={1.7} /></button>
         </div>
 
         <label className="search-box">
@@ -545,56 +1037,124 @@ function App() {
           {query && <button className="clear-search" onClick={() => setQuery('')} aria-label="Clear search"><X size={14} /></button>}
         </label>
 
-        <div className="library-label">
-          <button
-            className="folder-line"
-            aria-expanded={libraryOpen}
-            aria-controls="document-list"
-            title={folderName}
-            onClick={() => setLibraryOpen((open) => !open)}
-          >
-            <ChevronDown size={14} /> <span>{folderName}</span>
-          </button>
-          <span>{filteredDocuments.length}</span>
-        </div>
-
-        {libraryOpen && (
-          <nav className="document-list" id="document-list" aria-label="Markdown documents">
-            {filteredDocuments.length ? filteredDocuments.map((doc) => (
-              <div className="document-row" key={doc.id}>
+        <div className="library-scroll">
+          {groups.map((group) => (
+            <section className="library-group" key={group.id}>
+              <div className="library-label">
                 <button
-                  className={`document-item ${doc.id === activeId ? 'active' : ''}`}
-                  aria-current={doc.id === activeId}
-                  title={doc.path ?? 'Unsaved draft — not yet on disk'}
-                  onClick={() => setActiveId(doc.id)}
+                  className="folder-line"
+                  aria-expanded={isOpenGroup(group)}
+                  aria-controls={`group-${group.id}`}
+                  title={group.path ?? group.name}
+                  onClick={() => toggleGroup(group.id)}
                 >
-                  <FileText size={16} strokeWidth={1.6} />
-                  <span>
-                    <strong>{clampTitle(doc.name)}</strong>
-                    <small>
-                      {doc.isDirty && <span className="dirty-mark" aria-label="Unsaved changes">• </span>}
-                      {doc.isSample ? 'Sample' : doc.path ? 'Local file' : 'Draft'}
-                    </small>
-                  </span>
+                  <ChevronDown size={14} />
+                  {group.kind === 'recent' && <History size={12} strokeWidth={1.9} />}
+                  <span>{group.name}</span>
                 </button>
-                {documents.length > 1 && (
-                  <button
-                    className="close-document"
-                    aria-label={`Close ${clampTitle(doc.name)}`}
-                    title="Close"
-                    onClick={() => void closeDocument(doc.id)}
-                  >
-                    <X size={13} />
-                  </button>
+                <span className="group-count">{group.rows.length}</span>
+                {group.kind === 'folder' && (
+                  <>
+                    <button
+                      className="group-action"
+                      aria-label={`Refresh ${group.name}`}
+                      title="Re-read this folder from disk"
+                      onClick={() => void refreshFolder({ id: group.id, name: group.name, path: group.path ?? '' })}
+                    >
+                      <RefreshCw size={12} strokeWidth={2} />
+                    </button>
+                    <button
+                      className="group-action"
+                      aria-label={`Remove ${group.name} from the library`}
+                      title="Remove this folder from the library — the files stay on disk"
+                      onClick={() => void removeFolder({ id: group.id, name: group.name, path: group.path ?? '' })}
+                    >
+                      <X size={13} strokeWidth={2} />
+                    </button>
+                  </>
                 )}
               </div>
-            )) : (
-              <p className="empty-library">
-                {query ? `Nothing matches “${query}”.` : 'No documents open. Press Ctrl+O to open a file.'}
-              </p>
-            )}
-          </nav>
-        )}
+
+              {isOpenGroup(group) && (
+                <div className="document-list" id={`group-${group.id}`}>
+                  {group.rows.length ? group.rows.map((row) => (
+                    <div
+                      className={`document-row ${row.doc ? '' : 'unopened'}`}
+                      key={row.key}
+                      onContextMenu={(event) => {
+                        event.preventDefault()
+                        setMenu({ row, x: event.clientX, y: event.clientY })
+                      }}
+                    >
+                      {renamingKey === row.key ? (
+                        <form
+                          className="rename-form"
+                          onSubmit={(event) => { event.preventDefault(); void commitRename(row) }}
+                        >
+                          <input
+                            autoFocus
+                            value={renameDraft}
+                            aria-label={`Rename ${clampTitle(row.name)}`}
+                            onChange={(event) => setRenameDraft(event.target.value)}
+                            onBlur={() => void commitRename(row)}
+                            onKeyDown={(event) => {
+                              if (event.key !== 'Escape') return
+                              event.stopPropagation()
+                              renameCanceled.current = true
+                              setRenamingKey(null)
+                            }}
+                          />
+                        </form>
+                      ) : (
+                        <>
+                          <button
+                            className={`document-item ${row.doc && row.doc.id === activeId ? 'active' : ''}`}
+                            aria-current={Boolean(row.doc && row.doc.id === activeId)}
+                            title={row.path ?? 'Unsaved draft — not yet on disk'}
+                            onClick={() => void openRow(row)}
+                          >
+                            <FileText size={16} strokeWidth={1.6} />
+                            <span>
+                              <strong>{clampTitle(row.name)}</strong>
+                              <small>
+                                {row.doc?.isDirty && <span className="dirty-mark" aria-label="Unsaved changes">• </span>}
+                                {row.meta}
+                              </small>
+                            </span>
+                          </button>
+                          <button
+                            className="row-menu-button"
+                            aria-haspopup="menu"
+                            aria-label={`Actions for ${clampTitle(row.name)}`}
+                            title="Actions"
+                            onClick={(event) => {
+                              const bounds = event.currentTarget.getBoundingClientRect()
+                              setMenu({ row, x: bounds.left, y: bounds.bottom + 4 })
+                            }}
+                          >
+                            <Ellipsis size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )) : (
+                    <p className="empty-library">No Markdown files in this folder.</p>
+                  )}
+                </div>
+              )}
+            </section>
+          ))}
+
+          {!rowCount && (
+            <p className="empty-library">
+              {!restored
+                ? 'Reading your library…'
+                : query
+                  ? `Nothing matches “${query}”.`
+                  : 'Nothing here yet. Add a folder with Ctrl+Shift+O, open a file with Ctrl+O, or start a note with Ctrl+N.'}
+            </p>
+          )}
+        </div>
 
         <div className="sidebar-foot">
           <Sparkles size={15} strokeWidth={1.6} />
@@ -610,13 +1170,13 @@ function App() {
                 <Minimize2 size={18} strokeWidth={1.7} />
               </button>
             ) : (
-              <button className="icon-button" aria-label={sidebarOpen ? 'Hide document list' : 'Show document list'} aria-expanded={sidebarOpen} title="Document list (Ctrl+B)" onClick={() => setSidebarOpen((open) => !open)}>
+              <button className="icon-button" aria-label={sidebarOpen ? 'Hide library' : 'Show library'} aria-expanded={sidebarOpen} title="Library (Ctrl+B)" onClick={() => setSidebarOpen((open) => !open)}>
                 <Menu size={18} strokeWidth={1.7} />
               </button>
             )}
             {!focusMode && <span className="file-tab"><FileText size={15} strokeWidth={1.8} /></span>}
             <div className="identity-text">
-              <h1>{clampTitle(activeDocument.name)}</h1>
+              <h1>{activeDocument ? clampTitle(activeDocument.name) : 'Inkwell'}</h1>
               {!focusMode && <p role="status" aria-live="polite">{notice}</p>}
             </div>
           </div>
@@ -634,8 +1194,8 @@ function App() {
                 <button className={view === 'write' ? 'selected' : ''} aria-pressed={view === 'write'} onClick={() => setView('write')} aria-label="Writing view" title="Write (Ctrl+3)"><PencilLine size={16} /> <span>Write</span></button>
               </div>
             )}
-            <button className="save-as-button" title="Save as (Ctrl+Shift+S)" onClick={() => void saveDocument(true)}>Save as</button>
-            <button className="save-button" title="Save (Ctrl+S)" onClick={() => void saveDocument()}>
+            <button className="save-as-button" title="Save as (Ctrl+Shift+S)" disabled={!activeDocument} onClick={() => void saveDocument(true)}>Save as</button>
+            <button className="save-button" title="Save (Ctrl+S)" disabled={!activeDocument} onClick={() => void saveDocument()}>
               <Check size={16} strokeWidth={2} /> <span className="save-label">Save</span> <kbd>Ctrl+S</kbd>
             </button>
             {!focusMode && (
@@ -651,25 +1211,40 @@ function App() {
           </div>
         </header>
 
-        <div className={`document-canvas view-${view}`}>
-          {view !== 'write' && <div className="reader-panel"><Reader content={activeDocument.content} /></div>}
-          {view !== 'read' && <div className="editor-panel">
-            <div className="editor-bar">
-              <span><LayoutPanelLeft size={15} /> Markdown source</span>
-              <span className="statusbar-optional">{activeDocument.content.length.toLocaleString()} characters</span>
+        {activeDocument ? (
+          <div className={`document-canvas view-${view}`}>
+            {view !== 'write' && <div className="reader-panel"><Reader content={activeDocument.content} /></div>}
+            {view !== 'read' && <div className="editor-panel">
+              <div className="editor-bar">
+                <span><LayoutPanelLeft size={15} /> Markdown source</span>
+                <span className="statusbar-optional">{activeDocument.content.length.toLocaleString()} characters</span>
+              </div>
+              <textarea
+                ref={editorRef}
+                value={activeDocument.content}
+                onChange={(event) => updateContent(event.target.value)}
+                spellCheck="true"
+                aria-label="Markdown source editor"
+              />
+            </div>}
+          </div>
+        ) : (
+          <div className="document-canvas view-read">
+            <div className="canvas-empty">
+              <BookOpen size={26} strokeWidth={1.4} />
+              <h2>Nothing open</h2>
+              <p>Add a folder to keep its Markdown in the library, open a single file, or start a new note. Inkwell remembers this between launches.</p>
+              <div className="canvas-empty-actions">
+                <button onClick={createDocument}><FilePlus2 size={15} /> New note</button>
+                <button onClick={() => void openFiles()}><FileText size={15} /> Open file</button>
+                <button onClick={() => void addFolder()}><FolderPlus size={15} /> Add folder</button>
+              </div>
             </div>
-            <textarea
-              ref={editorRef}
-              value={activeDocument.content}
-              onChange={(event) => updateContent(event.target.value)}
-              spellCheck="true"
-              aria-label="Markdown source editor"
-            />
-          </div>}
-        </div>
+          </div>
+        )}
 
         <footer className="statusbar">
-          <span><Clock3 size={14} /> {wordCount} words</span>
+          <span><Clock3 size={14} /> {activeDocument ? wordCount : 0} words</span>
           <span className="statusbar-optional">{headings.length} sections</span>
           <span className="statusbar-end statusbar-optional">Markdown · UTF-8</span>
         </footer>
@@ -692,6 +1267,14 @@ function App() {
           <p>Reading view gives long notes a generous, distraction-free measure.</p>
         </div>
       </aside>
+
+      {menu && (
+        <RowMenu
+          items={menuItemsFor(menu.row)}
+          origin={{ x: menu.x, y: menu.y }}
+          onClose={() => setMenu(null)}
+        />
+      )}
     </main>
   )
 }

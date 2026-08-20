@@ -3,6 +3,20 @@
 declare global {
   type DocumentFile = { name: string; path: string; content: string; savedAt: number }
 
+  type RecentEntry = { path: string; name: string; openedAt: number }
+
+  /** The remembered library: folder sources, recent files, and where you were. */
+  type InkwellState = {
+    folders: string[]
+    recent: RecentEntry[]
+    activePath?: string
+    introDone: boolean
+  }
+
+  type RenameResult =
+    | { ok: true; path: string; name: string; savedAt?: number }
+    | { ok: false; reason: string }
+
   type ThemePayload = {
     name: string
     mode: 'light' | 'dark'
@@ -13,6 +27,19 @@ declare global {
     inkwell?: {
       openDocuments: () => Promise<DocumentFile[]>
       openFolder: () => Promise<{ folder: string; documents: DocumentFile[] }>
+      /** Re-reads a folder Inkwell already knows about — no dialog. */
+      readFolder: (folder: string) => Promise<{ folder: string; documents: DocumentFile[] }>
+      /** Reads recent files back in, which the library holds only as paths. */
+      readDocuments: (paths: string[]) => Promise<DocumentFile[]>
+      loadState: () => Promise<InkwellState>
+      saveState: (state: InkwellState) => void
+      renameDocument: (payload: { path: string; name: string }) => Promise<RenameResult>
+      duplicateDocument: (filePath: string) => Promise<DocumentFile | null>
+      /** Moves the file to the desktop trash. Never an unlink. */
+      trashDocument: (filePath: string) => Promise<boolean>
+      confirmTrash: (name: string) => Promise<boolean>
+      revealDocument: (filePath: string) => void
+      copyText: (text: string) => void
       saveDocument: (payload: { content: string; path?: string; forceSaveAs?: boolean; knownMtime?: number }) => Promise<{ canceled: boolean; path?: string; savedAt?: number }>
       setDirty: (isDirty: boolean) => void
       /** Resolves the active Omarchy theme, or the default palette off Omarchy. */
