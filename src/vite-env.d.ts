@@ -13,6 +13,9 @@ declare global {
     introDone: boolean
   }
 
+  /** A newer tag exists on GitHub. Null everywhere else — see src-electron/update.ts. */
+  type UpdateNotice = { version: string; url: string }
+
   type RenameResult =
     | { ok: true; path: string; name: string; savedAt?: number }
     | { ok: false; reason: string }
@@ -40,6 +43,13 @@ declare global {
       confirmTrash: (name: string) => Promise<boolean>
       revealDocument: (filePath: string) => void
       copyText: (text: string) => void
+      /** The last known update, from cache. Null when there is nothing to say. */
+      getUpdate: () => Promise<UpdateNotice | null>
+      /** Silences this version; anything newer speaks up again. */
+      dismissUpdate: (version: string) => void
+      /** Opens the tag page for the known update in the desktop browser. */
+      openUpdate: () => void
+      onUpdateAvailable: (listener: (notice: UpdateNotice) => void) => () => void
       saveDocument: (payload: { content: string; path?: string; forceSaveAs?: boolean; knownMtime?: number }) => Promise<{ canceled: boolean; path?: string; savedAt?: number }>
       setDirty: (isDirty: boolean) => void
       /** Resolves the active Omarchy theme, or the default palette off Omarchy. */

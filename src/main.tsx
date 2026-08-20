@@ -2,6 +2,7 @@ import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
+  ArrowUpCircle,
   BookOpen,
   Check,
   ChevronDown,
@@ -435,6 +436,7 @@ function App() {
   )
   const [focusMode, setFocusMode] = useState(false)
   const [notice, setNotice] = useState('Reading your library')
+  const [update, setUpdate] = useState<UpdateNotice | null>(null)
   const [menu, setMenu] = useState<{ row: LibraryRow; x: number; y: number } | null>(null)
   const [renamingKey, setRenamingKey] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
@@ -575,6 +577,16 @@ function App() {
     }
     void window.inkwell?.getTheme?.().then(apply).catch(() => undefined)
     return window.inkwell?.onThemeChange?.(apply)
+  }, [])
+
+  /* The one thing Inkwell asks the network about. It appears only when a newer
+     tag exists, and never announces its own failure: offline is the normal
+     state for a local-first editor, so an unreachable GitHub simply leaves the
+     status bar as it was. The cached answer arrives first, the live check
+     later. */
+  useEffect(() => {
+    void window.inkwell?.getUpdate?.().then((notice) => setUpdate(notice ?? null)).catch(() => undefined)
+    return window.inkwell?.onUpdateAvailable?.((notice) => setUpdate(notice ?? null))
   }, [])
 
   /* A tiling compositor resizes the window immediately after it is created, so
@@ -847,6 +859,11 @@ function App() {
     forgetPath(row.path)
     setNotice(`Moved ${clampTitle(row.name)} to the trash`)
   }, [forgetPath])
+
+  const dismissUpdate = () => {
+    if (update) window.inkwell?.dismissUpdate?.(update.version)
+    setUpdate(null)
+  }
 
   const menuItemsFor = useCallback((row: LibraryRow): MenuItem[] => {
     const items: MenuItem[] = [
@@ -1158,7 +1175,7 @@ function App() {
 
         <div className="sidebar-foot">
           <Sparkles size={15} strokeWidth={1.6} />
-          <p>Nothing leaves this machine unless you choose to share it.</p>
+          <p>Your documents never leave this machine.</p>
         </div>
       </aside>
 
@@ -1246,6 +1263,26 @@ function App() {
         <footer className="statusbar">
           <span><Clock3 size={14} /> {activeDocument ? wordCount : 0} words</span>
           <span className="statusbar-optional">{headings.length} sections</span>
+          {update && (
+            <span className="statusbar-update">
+              <button
+                type="button"
+                title={`Inkwell ${update.version} is out — open its notes on GitHub`}
+                onClick={() => window.inkwell?.openUpdate?.()}
+              >
+                <ArrowUpCircle size={12} strokeWidth={1.9} /> Inkwell {update.version} available
+              </button>
+              <button
+                type="button"
+                className="update-dismiss"
+                aria-label={`Dismiss the notice about Inkwell ${update.version}`}
+                title="Not now"
+                onClick={dismissUpdate}
+              >
+                <X size={11} strokeWidth={2} />
+              </button>
+            </span>
+          )}
           <span className="statusbar-end statusbar-optional">Markdown · UTF-8</span>
         </footer>
       </section>

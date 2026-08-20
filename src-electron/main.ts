@@ -3,6 +3,7 @@ import { copyFile, readFile, readdir, rename, stat, writeFile } from 'node:fs/pr
 import path from 'node:path'
 import { loadState, saveState } from './state'
 import { resolveTheme, watchTheme, type ThemeTokens } from './theme'
+import { checkForUpdate, dismissUpdate, knownUpdate } from './update'
 
 type DocumentFile = {
   name: string
@@ -126,6 +127,24 @@ async function uniqueCopyPath(source: string) {
   return null
 }
 
+/* The only outbound request Inkwell makes, and the least important thing it
+   does: run it well after the window is up so it is never in the launch path,
+   then once a day for a session left open across days. It reports only when it
+   has something to say — see update.ts for the silence-by-default posture. */
+function scheduleUpdateCheck(window: BrowserWindow) {
+  const run = () => {
+    void checkForUpdate().then((notice) => {
+      if (notice && !window.isDestroyed()) window.webContents.send('update:available', notice)
+    })
+  }
+  const first = setTimeout(run, 15_000)
+  const repeat = setInterval(run, 24 * 60 * 60 * 1000)
+  window.on('closed', () => {
+    clearTimeout(first)
+    clearInterval(repeat)
+  })
+}
+
 let mainWindow: BrowserWindow | null = null
 let stopWatchingTheme: (() => void) | null = null
 
@@ -217,6 +236,8 @@ async function createWindow() {
 
   const initial = await documentsFromArgv(process.argv.slice(1))
   if (initial.length && !window.isDestroyed()) window.webContents.send('document:opened-externally', initial)
+
+  scheduleUpdateCheck(window)
 }
 
 /* A launcher re-invoking Inkwell should raise the existing window and open the
@@ -375,6 +396,21 @@ if (!app.requestSingleInstanceLock()) {
 
     ipcMain.on('clipboard:write', (_event, text: string) => {
       if (typeof text === 'string') clipboard.writeText(text)
+    })
+
+    /* Cache only, so a result found in a previous session shows the moment the
+       renderer mounts rather than waiting out another check. */
+    ipcMain.handle('update:get', () => knownUpdate())
+
+    ipcMain.on('update:dismiss', (_event, version: unknown) => { void dismissUpdate(version) })
+
+    /* The renderer asks to open "the update", never a URL: the address is the
+       one main built from the tag it fetched, so nothing in the page can steer
+       shell.openExternal somewhere else. */
+    ipcMain.on('update:open', () => {
+      void knownUpdate().then((notice) => {
+        if (notice) void shell.openExternal(notice.url)
+      })
     })
 
     ipcMain.handle('document:save', async (_event, payload: {

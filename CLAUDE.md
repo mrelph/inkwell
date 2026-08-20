@@ -55,20 +55,29 @@ reading for this reason.
 ## Architecture
 
 Local-first Markdown reader/editor: an Electron shell around a single-page React
-app. No backend and no network calls; all persistence is filesystem I/O via IPC.
+app. No backend; all persistence is filesystem I/O via IPC. Exactly one network
+call exists — the version check in `update.ts` — and everything else is local.
 
 - `src-electron/main.ts` — owns all filesystem access (`document:open`,
   `document:open-folder`, `document:read-folder`, `document:read`,
   `document:save`, `document:confirm-discard`, `file:rename`, `file:duplicate`,
   `file:trash`, `file:confirm-trash`, `file:reveal`, `clipboard:write`,
-  `state:load`, `state:save`, `theme:get`), native dialogs, the unsaved-changes
-  close guard, the single-instance lock, argv file opening, and the
-  external-link policy (`setWindowOpenHandler` + `will-navigate` hand safe
+  `state:load`, `state:save`, `theme:get`, `update:get`, `update:dismiss`,
+  `update:open`), native dialogs, the unsaved-changes close guard, the
+  single-instance lock, argv file opening, and the external-link policy (`setWindowOpenHandler` + `will-navigate` hand safe
   schemes to `shell.openExternal` and deny everything else).
 - `src-electron/state.ts` — the remembered library (folder sources, recent
   files, last active path) as JSON in `userData`. Every field is re-validated
   on load and written through a temp file, because it is a file the user can
   open and mangle and it must never be able to break startup.
+- `src-electron/update.ts` — the only outbound request: once a day, the repo's
+  **tags** (not `/releases/latest`, which 404s — Inkwell publishes tags, not
+  Release objects) via `net.fetch`, so a system proxy is honoured. Silence is
+  the default: opted out, up to date, dismissed, and unreachable all return
+  `null`, and a *failed* check deliberately does not stamp `checkedAt`, so
+  launching offline does not buy a day of not asking. The renderer is told only
+  when there is something to say, and `update:open` opens the URL main built
+  from the tag it fetched — the page never supplies a URL to `openExternal`.
 - `src-electron/theme.ts` — resolves the active Omarchy theme into design tokens
   and watches for theme switches.
 - `src-electron/preload.ts` — contextBridge exposing `window.inkwell`. Typed in

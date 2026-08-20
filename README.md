@@ -18,7 +18,9 @@ It is built for [Omarchy](https://omarchy.org/) (Arch Linux + Hyprland): the com
 - Render GitHub-flavored Markdown including tables, task lists, blockquotes, and code.
 - Use the generated outline to navigate long documents.
 - Follow the active Omarchy theme, including light and dark, without a restart.
-- Work entirely locally—there are no accounts or cloud services.
+- Work entirely locally—there are no accounts or cloud services. The one
+  request Inkwell makes is an optional daily check for a newer version, which
+  can be turned off.
 
 ## Requirements
 
@@ -58,6 +60,25 @@ Electron. See [`packaging/README.md`](packaging/README.md) for maintainer notes.
 cd packaging
 makepkg -si
 ```
+
+### Updates
+
+Inkwell is not in the AUR, so nothing updates it for you. Once a day it asks
+GitHub whether a newer `v<x.y.z>` tag exists, and when there is one a quiet line
+appears at the right of the status bar: *Inkwell 0.1.3 available*. Clicking it
+opens that tag's page; the `×` beside it silences that version, and only
+something newer speaks up again.
+
+The check sends nothing but the request itself — no document, no file name, no
+path — and it fails silently. Offline, behind a captive portal, and rate limited
+all look the same from inside the app: the line simply does not appear, and the
+next launch tries again.
+
+To switch it off completely, set `INKWELL_NO_UPDATE_CHECK=1` in the environment
+Inkwell launches in.
+
+Updating is then the same `makepkg -si` in `packaging/`, once `pkgver` and
+`sha256sums` point at the new tag.
 
 ### Markdown file association
 
@@ -145,7 +166,7 @@ derivation rules. [`DESIGN.md`](DESIGN.md) governs everything that is not color.
 ## Project structure
 
 - `src/` — React application and editorial interface.
-- `src-electron/` — Electron main process, hardened preload bridge, and the Omarchy theme resolver.
+- `src-electron/` — Electron main process, hardened preload bridge, the Omarchy theme resolver, and the version check.
 - `packaging/` — Arch PKGBUILD, desktop entry, and maintainer notes.
 - `scripts/` — development helpers.
 - `build/` — application icon assets.
