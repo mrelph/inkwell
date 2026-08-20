@@ -61,6 +61,14 @@ cd packaging
 makepkg -si
 ```
 
+The AUR package is named **`inkwell-omarchy`** rather than `inkwell`, because
+an unrelated editor already claims that name there. The binary, the app
+directory and the desktop entry are all still `inkwell`. Once it is published:
+
+```bash
+yay -S inkwell-omarchy
+```
+
 ### Updates
 
 Inkwell is not in the AUR, so nothing updates it for you. Once a day it asks

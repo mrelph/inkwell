@@ -7,7 +7,15 @@
 # of truth: it drives both depends=() and the installed launcher. Bumping
 # Electron means changing that one line, rebuilding, and re-testing.
 
-pkgname=inkwell
+# NOTE (package name): the AUR already carries `inkwell-bin`, an unrelated
+# proprietary Tauri editor that also calls itself Inkwell and declares
+# provides=('inkwell'), so the bare name is effectively spoken for. This package
+# takes a distinct one. $_appname stays `inkwell` throughout: the binary, the
+# app directory, the icon and the desktop entry all keep that name, and
+# StartupWMClass has to match the Wayland app_id exactly or window and icon
+# association breaks.
+pkgname=inkwell-omarchy
+_appname=inkwell
 pkgver=0.1.3
 pkgrel=1
 pkgdesc="A calm, local-first Markdown reader and editor for Linux"
@@ -17,11 +25,15 @@ license=('MIT')
 _electron=electron43
 depends=("${_electron}" 'hicolor-icon-theme')
 makedepends=('pnpm' 'nodejs')
-source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
+# Both ship /usr/bin/inkwell. Declaring the conflict makes pacman refuse the
+# transaction with a readable reason instead of failing on a file collision
+# partway through; it matches inkwell-bin's own provides=('inkwell').
+conflicts=('inkwell')
+source=("${_appname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
 sha256sums=('80080c14ace494a768f48f2ad1e372e30455e5f69c84fb8cb872e614285a042d')
 
 build() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
+  cd "${srcdir}/${_appname}-${pkgver}"
 
   # pnpm needs a writable home/store dir inside the build sandbox.
   export HOME="${srcdir}"
@@ -47,34 +59,34 @@ YAML
 }
 
 package() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
+  cd "${srcdir}/${_appname}-${pkgver}"
 
-  install -d "${pkgdir}/usr/lib/${pkgname}"
-  cp -r dist "${pkgdir}/usr/lib/${pkgname}/dist"
-  cp -r dist-electron "${pkgdir}/usr/lib/${pkgname}/dist-electron"
-  install -Dm644 package.json "${pkgdir}/usr/lib/${pkgname}/package.json"
+  install -d "${pkgdir}/usr/lib/${_appname}"
+  cp -r dist "${pkgdir}/usr/lib/${_appname}/dist"
+  cp -r dist-electron "${pkgdir}/usr/lib/${_appname}/dist-electron"
+  install -Dm644 package.json "${pkgdir}/usr/lib/${_appname}/package.json"
 
   # Normalize permissions on the copied trees: directories 755, files 644.
-  find "${pkgdir}/usr/lib/${pkgname}/dist" "${pkgdir}/usr/lib/${pkgname}/dist-electron" \
+  find "${pkgdir}/usr/lib/${_appname}/dist" "${pkgdir}/usr/lib/${_appname}/dist-electron" \
     -type d -exec chmod 755 {} \;
-  find "${pkgdir}/usr/lib/${pkgname}/dist" "${pkgdir}/usr/lib/${pkgname}/dist-electron" \
+  find "${pkgdir}/usr/lib/${_appname}/dist" "${pkgdir}/usr/lib/${_appname}/dist-electron" \
     -type f -exec chmod 644 {} \;
 
   # Launcher: exec the system Electron against the installed app directory,
   # forwarding all arguments so `inkwell notes.md` opens that file.
   install -d "${pkgdir}/usr/bin"
-  cat > "${pkgdir}/usr/bin/${pkgname}" <<'EOF'
+  cat > "${pkgdir}/usr/bin/${_appname}" <<'EOF'
 #!/bin/bash
 # Exec the system Electron against the installed app, forwarding arguments so
 # `inkwell notes.md` opens that file. The binary is pinned by the PKGBUILD's
 # $_electron and guaranteed present by depends=().
 exec @ELECTRON@ /usr/lib/inkwell "$@"
 EOF
-  sed -i "s|@ELECTRON@|${_electron}|" "${pkgdir}/usr/bin/${pkgname}"
-  chmod 755 "${pkgdir}/usr/bin/${pkgname}"
+  sed -i "s|@ELECTRON@|${_electron}|" "${pkgdir}/usr/bin/${_appname}"
+  chmod 755 "${pkgdir}/usr/bin/${_appname}"
 
-  install -Dm644 packaging/inkwell.desktop "${pkgdir}/usr/share/applications/${pkgname}.desktop"
-  install -Dm644 build/icon.png "${pkgdir}/usr/share/icons/hicolor/512x512/apps/${pkgname}.png"
-  install -Dm644 build/icon.svg "${pkgdir}/usr/share/icons/hicolor/scalable/apps/${pkgname}.svg"
+  install -Dm644 packaging/inkwell.desktop "${pkgdir}/usr/share/applications/${_appname}.desktop"
+  install -Dm644 build/icon.png "${pkgdir}/usr/share/icons/hicolor/512x512/apps/${_appname}.png"
+  install -Dm644 build/icon.svg "${pkgdir}/usr/share/icons/hicolor/scalable/apps/${_appname}.svg"
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
