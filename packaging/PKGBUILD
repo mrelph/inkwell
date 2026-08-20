@@ -32,6 +32,16 @@ build() {
   # binary download, which would otherwise be fetched and then never used.
   export ELECTRON_SKIP_BINARY_DOWNLOAD=1
 
+  # pnpm 11 fails the install outright when a dependency has a build script it
+  # has not been told about, and esbuild (via vite) has one. The flag that used
+  # to answer this (--allow-build) is gone, so the decision is declared in a
+  # workspace file instead. Skipping it is safe: the script only relinks the
+  # platform binary that @esbuild/linux-x64 already ships.
+  cat > pnpm-workspace.yaml <<'YAML'
+allowBuilds:
+  esbuild: false
+YAML
+
   pnpm install --frozen-lockfile
   pnpm build
 }
