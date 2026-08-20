@@ -8,7 +8,7 @@
 # Electron means changing that one line, rebuilding, and re-testing.
 
 pkgname=inkwell
-pkgver=0.1.2
+pkgver=0.1.3
 pkgrel=1
 pkgdesc="A calm, local-first Markdown reader and editor for Linux"
 arch=('any')
@@ -18,7 +18,7 @@ _electron=electron43
 depends=("${_electron}" 'hicolor-icon-theme')
 makedepends=('pnpm' 'nodejs')
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('bff289be5afd3bc70d4fea34898c863b945116100d4c3cb8e5e574376e248f1c')
+sha256sums=('80080c14ace494a768f48f2ad1e372e30455e5f69c84fb8cb872e614285a042d')
 
 build() {
   cd "${srcdir}/${pkgname}-${pkgver}"
