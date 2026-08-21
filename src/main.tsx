@@ -25,7 +25,6 @@ import {
   PencilLine,
   RefreshCw,
   Search,
-  Sparkles,
   SplitSquareHorizontal,
   Trash2,
   X
@@ -416,6 +415,35 @@ function RowMenu({ items, origin, onClose }: {
   )
 }
 
+/* A tiling compositor hands Inkwell whatever geometry the layout dictates,
+   often a quarter of the screen, and the width at mount is not the width the
+   user ends up with. Both side panels fold away once the window stops having
+   room for them and unfold when the room comes back — but only if Inkwell was
+   the one that folded them. Closing a panel by hand is a decision at any
+   width, and a resize must never overrule it. */
+function useAutoCollapse(query: string, open: boolean, setOpen: (next: boolean) => void) {
+  const openRef = useRef(open)
+  const autoClosed = useRef(false)
+
+  useEffect(() => { openRef.current = open }, [open])
+
+  useEffect(() => {
+    const tight = window.matchMedia(query)
+    const sync = () => {
+      if (tight.matches) {
+        if (openRef.current) autoClosed.current = true
+        setOpen(false)
+      } else if (autoClosed.current) {
+        autoClosed.current = false
+        setOpen(true)
+      }
+    }
+    sync()
+    tight.addEventListener('change', sync)
+    return () => tight.removeEventListener('change', sync)
+  }, [query, setOpen])
+}
+
 function App() {
   const [documents, setDocuments] = useState<MarkdownDoc[]>([])
   const [folders, setFolders] = useState<FolderSource[]>([])
@@ -589,19 +617,13 @@ function App() {
     return window.inkwell?.onUpdateAvailable?.((notice) => setUpdate(notice ?? null))
   }, [])
 
-  /* A tiling compositor resizes the window immediately after it is created, so
-     the width at mount is not the width the user gets. Re-evaluate whenever the
-     outline loses its own column and fold it away rather than leaving it
-     overlaying the document. */
-  useEffect(() => {
-    const compact = window.matchMedia('(max-width: 1120px)')
-    const sync = () => {
-      if (compact.matches) setOutlineOpen(false)
-    }
-    sync()
-    compact.addEventListener('change', sync)
-    return () => compact.removeEventListener('change', sync)
-  }, [])
+  /* The outline goes first, at the width where it loses its own column and
+     would otherwise overlay the document. The library holds on longer: it is
+     how you move between documents, so it only folds once a split has stopped
+     fitting and its 250px is most of what is left. Both breakpoints match ones
+     styles.css already uses rather than inventing new ones. */
+  useAutoCollapse('(max-width: 1120px)', outlineOpen, setOutlineOpen)
+  useAutoCollapse('(max-width: 820px)', sidebarOpen, setSidebarOpen)
 
   /* Opening files only ever adds: nothing already in the library is discarded,
      and a file that is already there is activated rather than duplicated. Ids
@@ -955,6 +977,16 @@ function App() {
     return normalized ? list.filter((group) => group.rows.length) : list
   }, [documents, folders, query, recent])
 
+  /* Close acts on whatever is active, which the sidebar already models as a
+     row. Finding it there rather than rebuilding the rules means folder files
+     stay excluded for exactly the reason the row menu excludes them: closing
+     one would be meaningless while its folder still lists it. */
+  const activeRow = useMemo(
+    () => groups.flatMap((group) => group.rows).find((row) => row.doc?.id === activeId) ?? null,
+    [groups, activeId]
+  )
+  const closableRow = activeRow && activeRow.kind !== 'folder' ? activeRow : null
+
   const rowCount = groups.reduce((total, group) => total + group.rows.length, 0)
   /* A search expands everything: a collapsed group hiding the only match reads
      as "no results". */
@@ -1046,6 +1078,19 @@ function App() {
           <button className="new-note" title="New note (Ctrl+N)" onClick={createDocument}><FilePlus2 size={16} strokeWidth={1.8} /> New note</button>
           <button className="icon-button" aria-label="Open Markdown file" title="Open a file — adds it to Recent (Ctrl+O)" onClick={() => void openFiles()}><FileText size={18} strokeWidth={1.7} /></button>
           <button className="icon-button" aria-label="Add folder to the library" title="Add a folder — keeps its Markdown in the library (Ctrl+Shift+O)" onClick={() => void addFolder()}><FolderPlus size={18} strokeWidth={1.7} /></button>
+          <button
+            className="icon-button"
+            aria-label={closableRow ? `Close ${closableRow.name}` : 'Close the current document'}
+            title={closableRow
+              ? `Close ${closableRow.name}`
+              : activeRow
+                ? 'A file in an added folder stays in the library — remove the folder instead, or move the file to the trash'
+                : 'Nothing open to close'}
+            disabled={!closableRow}
+            onClick={() => { if (closableRow) void closeRow(closableRow) }}
+          >
+            <X size={18} strokeWidth={1.7} />
+          </button>
         </div>
 
         <label className="search-box">
@@ -1171,11 +1216,6 @@ function App() {
                   : 'Nothing here yet. Add a folder with Ctrl+Shift+O, open a file with Ctrl+O, or start a note with Ctrl+N.'}
             </p>
           )}
-        </div>
-
-        <div className="sidebar-foot">
-          <Sparkles size={15} strokeWidth={1.6} />
-          <p>Your documents never leave this machine.</p>
         </div>
       </aside>
 

@@ -107,6 +107,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   background: color-mix(in srgb, var(--surface-chrome) 82%, var(--text-primary));
 }
 
+/* An inert control has to look inert. Hover feedback on a disabled button
+   reads as a click that failed rather than as "not right now". */
+.icon-button:disabled { opacity: .4; cursor: default; }
+.icon-button:disabled:hover { color: var(--text-muted); background: transparent; }
+
 .sidebar {
   display: flex;
   flex-direction: column;
@@ -386,19 +391,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .document-item strong { font-size: 12px; font-weight: 680; line-height: 1.35; }
 .document-item small { margin-top: 2px; color: var(--text-muted); font-size: 10px; line-height: 1.3; }
 .document-item .dirty-mark { color: var(--accent); font-weight: 800; }
-
-.sidebar-foot {
-  display: flex;
-  gap: 8px;
-  /* auto keeps the footer at the bottom even when the list is collapsed. */
-  margin: auto 3px 0;
-  padding: 11px 8px 2px;
-  color: var(--text-muted);
-  border-top: 1px solid var(--line-hairline);
-}
-
-.sidebar-foot svg { flex: none; margin-top: 2px; color: var(--accent); }
-.sidebar-foot p { margin: 0; font-size: 10px; line-height: 1.45; }
 
 .workspace {
   display: grid;
@@ -888,7 +880,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   :root { --header-h: 44px; }
   .document-header { min-height: 44px; padding: 6px 10px; }
   .document-identity p { display: none; }
-  .sidebar-foot, .outline-tip { display: none; }
+  .outline-tip { display: none; }
   .reader-panel, .view-split .reader-panel { padding-top: 20px; }
   .markdown-prose h1 { font-size: 28px; margin-bottom: 16px; }
   .markdown-prose h2 { margin-top: 1.4em; }
