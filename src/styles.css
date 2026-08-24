@@ -902,9 +902,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .app-shell.sidebar-collapsed { --col-sidebar: 0px; }
 .app-shell.outline-collapsed { --col-outline: 0px; }
 
-/* Focus writing: the document gets the window. Only the writing surface, the
-   save controls, and the split toggle survive. Declared after the collapse
-   rules so it wins outright whatever the panels' own state happens to be. */
+/* Focus mode: the document gets the window. Only the reading or writing
+   surface and the save controls survive. Declared after the collapse rules
+   so it wins outright whatever the panels' own state happens to be. */
 .app-shell.focus-mode { --col-sidebar: 0px; --col-outline: 0px; }
 .app-shell.focus-mode .sidebar,
 .app-shell.focus-mode .outline,
@@ -929,8 +929,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .app-shell.focus-mode .save-as-button { display: inline-block; }
 .app-shell.focus-mode .view-split .reader-panel { border-right: 1px solid var(--line-hairline); }
 /* Roomier measure with no panels competing for width. */
-.app-shell.focus-mode .editor-panel textarea { padding: clamp(28px, 7vw, 120px) clamp(24px, 12vw, 220px); }
-.app-shell.focus-mode.split-focus .editor-panel textarea { padding: clamp(24px, 4vw, 60px) clamp(20px, 5vw, 82px); }
+.app-shell.focus-mode .editor-panel textarea,
+.app-shell.focus-mode .reader-panel { padding: clamp(28px, 7vw, 120px) clamp(24px, 12vw, 220px); }
+.app-shell.focus-mode.split-focus .editor-panel textarea,
+.app-shell.focus-mode.split-focus .reader-panel { padding: clamp(24px, 4vw, 60px) clamp(20px, 5vw, 82px); }
 
 /* A window too narrow for a real split normally collapses to the reader, which
    is right everywhere except here: focus *writing* must keep the writing

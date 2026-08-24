@@ -376,7 +376,7 @@ function RowMenu({ items, origin, onClose }: {
   }, [onClose])
 
   /* Escape must not fall through to the window handler, which would also leave
-     focus writing or close the outline. */
+     focus mode or close the outline. */
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
       event.stopPropagation()
@@ -994,17 +994,11 @@ function App() {
   const toggleGroup = (id: string) =>
     setCollapsed((current) => current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id])
 
-  /* Focus writing is orthogonal to the view mode rather than a fourth mode:
-     focus + split is a legitimate combination. Reading has no writing surface,
-     so entering focus from Read promotes to Write. */
+  /* Focus is orthogonal to the view mode rather than a fourth mode: focus +
+     read, focus + split, and focus + write are all legitimate combinations.
+     It just hides the surrounding chrome, whatever the current view is. */
   const toggleFocus = useCallback(() => {
-    const next = !focusMode
-    setFocusMode(next)
-    if (next && view === 'read') setView('write')
-  }, [focusMode, view])
-
-  const toggleSplit = useCallback(() => {
-    setView((current) => (current === 'split' ? 'write' : 'split'))
+    setFocusMode((current) => !current)
   }, [])
 
   const switchToHeading = (id: string) => {
@@ -1014,13 +1008,13 @@ function App() {
 
   /* Keep the latest handlers in a ref so the global listener attaches once
      instead of being torn down and rebuilt on every render. */
-  const actions = useRef({ saveDocument, openFiles, addFolder, createDocument, setView, setSidebarOpen, setOutlineOpen, toggleFocus, toggleSplit, focusMode })
-  actions.current = { saveDocument, openFiles, addFolder, createDocument, setView, setSidebarOpen, setOutlineOpen, toggleFocus, toggleSplit, focusMode }
+  const actions = useRef({ saveDocument, openFiles, addFolder, createDocument, setView, setSidebarOpen, setOutlineOpen, toggleFocus, focusMode })
+  actions.current = { saveDocument, openFiles, addFolder, createDocument, setView, setSidebarOpen, setOutlineOpen, toggleFocus, focusMode }
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const current = actions.current
-      /* Escape leaves focus writing first: it is the more enclosing state, and
+      /* Escape leaves focus mode first: it is the more enclosing state, and
          the outline is not visible while focus mode is on. */
       if (event.key === 'Escape') {
         if (current.focusMode) current.toggleFocus()
@@ -1223,7 +1217,7 @@ function App() {
         <header className="document-header">
           <div className="document-identity">
             {focusMode ? (
-              <button className="icon-button" aria-label="Leave focus writing" title="Leave focus writing (Escape)" onClick={toggleFocus}>
+              <button className="icon-button" aria-label="Leave focus mode" title="Leave focus mode (Escape)" onClick={toggleFocus}>
                 <Minimize2 size={18} strokeWidth={1.7} />
               </button>
             ) : (
@@ -1238,19 +1232,11 @@ function App() {
             </div>
           </div>
           <div className="document-tools">
-            {focusMode ? (
-              <div className="view-switcher" role="group" aria-label="Document view">
-                <button className={view === 'split' ? 'selected' : ''} aria-pressed={view === 'split'} onClick={toggleSplit} aria-label="Split with reader" title="Split with reader (Ctrl+2)">
-                  <SplitSquareHorizontal size={16} /> <span>Split</span>
-                </button>
-              </div>
-            ) : (
-              <div className="view-switcher" role="group" aria-label="Document view">
-                <button className={view === 'read' ? 'selected' : ''} aria-pressed={view === 'read'} onClick={() => setView('read')} aria-label="Reading view" title="Read (Ctrl+1)"><BookOpen size={16} /> <span>Read</span></button>
-                <button className={view === 'split' ? 'selected' : ''} aria-pressed={view === 'split'} onClick={() => setView('split')} aria-label="Split view" title="Split (Ctrl+2)"><SplitSquareHorizontal size={16} /> <span>Split</span></button>
-                <button className={view === 'write' ? 'selected' : ''} aria-pressed={view === 'write'} onClick={() => setView('write')} aria-label="Writing view" title="Write (Ctrl+3)"><PencilLine size={16} /> <span>Write</span></button>
-              </div>
-            )}
+            <div className="view-switcher" role="group" aria-label="Document view">
+              <button className={view === 'read' ? 'selected' : ''} aria-pressed={view === 'read'} onClick={() => setView('read')} aria-label="Reading view" title="Read (Ctrl+1)"><BookOpen size={16} /> <span>Read</span></button>
+              <button className={view === 'split' ? 'selected' : ''} aria-pressed={view === 'split'} onClick={() => setView('split')} aria-label="Split view" title="Split (Ctrl+2)"><SplitSquareHorizontal size={16} /> <span>Split</span></button>
+              <button className={view === 'write' ? 'selected' : ''} aria-pressed={view === 'write'} onClick={() => setView('write')} aria-label="Writing view" title="Write (Ctrl+3)"><PencilLine size={16} /> <span>Write</span></button>
+            </div>
             <button className="save-as-button" title="Save as (Ctrl+Shift+S)" disabled={!activeDocument} onClick={() => void saveDocument(true)}>Save as</button>
             <button className="save-button" title="Save (Ctrl+S)" disabled={!activeDocument} onClick={() => void saveDocument()}>
               <Check size={16} strokeWidth={2} /> <span className="save-label">Save</span> <kbd>Ctrl+S</kbd>
@@ -1260,7 +1246,7 @@ function App() {
                 <button className="icon-button outline-toggle" aria-label={outlineOpen ? 'Hide outline' : 'Show outline'} aria-expanded={outlineOpen} title="Outline (Ctrl+\)" onClick={() => setOutlineOpen((open) => !open)}>
                   {outlineOpen ? <PanelRightClose size={18} strokeWidth={1.7} /> : <PanelRightOpen size={18} strokeWidth={1.7} />}
                 </button>
-                <button className="icon-button" aria-label="Focus writing" title="Focus writing (Ctrl+Shift+F)" onClick={toggleFocus}>
+                <button className="icon-button" aria-label="Focus mode" title="Focus mode (Ctrl+Shift+F)" onClick={toggleFocus}>
                   <Maximize2 size={18} strokeWidth={1.7} />
                 </button>
               </>

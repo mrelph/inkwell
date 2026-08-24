@@ -124,12 +124,13 @@ that has gone is dropped when the user tries to open it.
 **View modes** (`read`/`split`/`write`) are driven by CSS grid classes on
 `.document-canvas`, not separate components.
 
-**Focus writing** is an orthogonal `focusMode` flag, not a fourth view mode —
-focus + split is a legitimate combination. It hides the sidebar, outline and
-status bar via `.focus-mode`, and `Escape` exits it *before* falling through to
-closing the outline. One inversion to be aware of: below 820px a split normally
-collapses to the reader, but in focus mode it must collapse to the **editor**,
-since the whole point is the writing surface.
+**Focus** is an orthogonal `focusMode` flag, not a fourth view mode — focus +
+read, focus + split, and focus + write are all legitimate combinations; toggling
+it never changes `view`. It hides the sidebar, outline and status bar via
+`.focus-mode`, and `Escape` exits it *before* falling through to closing the
+outline. One inversion to be aware of: below 820px a split normally collapses
+to the reader, but in focus + split it must collapse to the **editor** instead
+— a deliberate bias toward the writing surface in that one narrow combination.
 
 ## Layout invariants
 
