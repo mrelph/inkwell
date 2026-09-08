@@ -20,13 +20,16 @@ import {
   Maximize2,
   Menu,
   Minimize2,
+  Minus,
   PanelRightClose,
   PanelRightOpen,
   PencilLine,
+  Plus,
   RefreshCw,
   Search,
   SplitSquareHorizontal,
   Trash2,
+  Type,
   X
 } from 'lucide-react'
 import '@fontsource-variable/manrope'
@@ -65,6 +68,19 @@ const RECENT = 'recent'
 
 const MAX_FOLDERS = 8
 const MAX_RECENT = 12
+const MIN_ZOOM = 80
+const MAX_ZOOM = 140
+const ZOOM_STEP = 10
+
+const READER_FONTS: { value: ReaderFont; label: string }[] = [
+  { value: 'editorial', label: 'Editorial serif' },
+  { value: 'classic', label: 'Classic serif' },
+  { value: 'sans', label: 'Manrope sans' },
+  { value: 'system', label: 'System sans' },
+  { value: 'mono', label: 'Monospace' }
+]
+
+const clampZoom = (value: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))
 
 const folderIdFor = (folder: string) => `folder:${folder}`
 const folderLabel = (folder: string) => folder.split('/').filter(Boolean).pop() ?? folder
@@ -107,6 +123,7 @@ Switch between a focused reading view, a clean writing view, or place them side 
 - **Save** with \`Ctrl+S\`
 - **New note** with \`Ctrl+N\`
 - Switch views with \`Ctrl+1\`, \`Ctrl+2\`, \`Ctrl+3\`
+- Adjust display zoom with \`Ctrl++\`, \`Ctrl+-\`, and \`Ctrl+0\`
 - Toggle the library with \`Ctrl+B\` and the outline with \`Ctrl+\\\`
 
 ### Markdown that reads well
@@ -463,12 +480,16 @@ function App() {
     () => !window.matchMedia('(max-width: 1120px)').matches
   )
   const [focusMode, setFocusMode] = useState(false)
+  const [readerFont, setReaderFont] = useState<ReaderFont>('editorial')
+  const [zoomLevel, setZoomLevel] = useState(100)
+  const [appearanceOpen, setAppearanceOpen] = useState(false)
   const [notice, setNotice] = useState('Reading your library')
   const [update, setUpdate] = useState<UpdateNotice | null>(null)
   const [menu, setMenu] = useState<{ row: LibraryRow; x: number; y: number } | null>(null)
   const [renamingKey, setRenamingKey] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState('')
   const editorRef = useRef<HTMLTextAreaElement>(null)
+  const appearanceRef = useRef<HTMLDivElement>(null)
   const draftSerial = useRef(0)
   /* Escape unmounts the rename input, which fires its blur handler on the way
      out. Without this the cancel would be committed as a rename. */
@@ -529,7 +550,7 @@ function App() {
       try {
         state = await bridge.loadState()
       } catch {
-        state = { folders: [], recent: [], introDone: false }
+        state = { folders: [], recent: [], introDone: false, readerFont: 'editorial', zoomLevel: 100 }
       }
 
       const results = await Promise.all(state.folders.map(async (folder) => {
@@ -564,6 +585,8 @@ function App() {
       setFolders(liveFolders)
       setRecent(state.recent)
       setIntroDone(state.introDone || hasLibrary)
+      setReaderFont(state.readerFont)
+      setZoomLevel(state.zoomLevel)
       setDocuments(hasLibrary ? restoredDocs : seedDocuments)
       const active = restoredDocs.find((doc) => doc.path === state.activePath) ?? restoredDocs[0]
       setActiveId(hasLibrary ? active?.id ?? null : seedDocuments[0].id)
@@ -586,11 +609,32 @@ function App() {
         folders: folders.map((folder) => folder.path),
         recent: recent.slice(0, MAX_RECENT),
         activePath: activeDocument?.path,
-        introDone
+        introDone,
+        readerFont,
+        zoomLevel
       })
     }, 400)
     return () => window.clearTimeout(handle)
-  }, [restored, folders, recent, activeDocument?.path, introDone])
+  }, [restored, folders, recent, activeDocument?.path, introDone, readerFont, zoomLevel])
+
+  /* Typography stays a renderer concern; whole-display zoom uses Electron's
+     native page zoom so chrome, editor and reader scale together. */
+  useEffect(() => {
+    document.documentElement.dataset.readerFont = readerFont
+  }, [readerFont])
+
+  useEffect(() => {
+    window.inkwell?.setZoomLevel?.(zoomLevel)
+  }, [zoomLevel])
+
+  useEffect(() => {
+    if (!appearanceOpen) return
+    const closeOutside = (event: PointerEvent) => {
+      if (!appearanceRef.current?.contains(event.target as Node)) setAppearanceOpen(false)
+    }
+    window.addEventListener('pointerdown', closeOutside)
+    return () => window.removeEventListener('pointerdown', closeOutside)
+  }, [appearanceOpen])
 
   /* Follow the active Omarchy theme. Tokens arrive as CSS custom properties and
      are applied to :root, so a theme switch repaints without a reload. */
@@ -1001,6 +1045,19 @@ function App() {
     setFocusMode((current) => !current)
   }, [])
 
+  const changeZoom = useCallback((amount: number) => {
+    setZoomLevel((current) => clampZoom(current + amount))
+  }, [])
+
+  const resetAppearance = useCallback(() => {
+    setReaderFont('editorial')
+    setZoomLevel(100)
+  }, [])
+
+  const resetZoom = useCallback(() => {
+    setZoomLevel(100)
+  }, [])
+
   const switchToHeading = (id: string) => {
     if (view === 'write') setView('read')
     window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 40)
@@ -1008,16 +1065,17 @@ function App() {
 
   /* Keep the latest handlers in a ref so the global listener attaches once
      instead of being torn down and rebuilt on every render. */
-  const actions = useRef({ saveDocument, openFiles, addFolder, createDocument, setView, setSidebarOpen, setOutlineOpen, toggleFocus, focusMode })
-  actions.current = { saveDocument, openFiles, addFolder, createDocument, setView, setSidebarOpen, setOutlineOpen, toggleFocus, focusMode }
+  const actions = useRef({ saveDocument, openFiles, addFolder, createDocument, setView, setSidebarOpen, setOutlineOpen, setAppearanceOpen, toggleFocus, changeZoom, resetZoom, focusMode, appearanceOpen })
+  actions.current = { saveDocument, openFiles, addFolder, createDocument, setView, setSidebarOpen, setOutlineOpen, setAppearanceOpen, toggleFocus, changeZoom, resetZoom, focusMode, appearanceOpen }
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const current = actions.current
-      /* Escape leaves focus mode first: it is the more enclosing state, and
-         the outline is not visible while focus mode is on. */
+      /* Dismiss transient appearance chrome before changing the surrounding
+         workspace. Focus mode comes next because it encloses the outline. */
       if (event.key === 'Escape') {
-        if (current.focusMode) current.toggleFocus()
+        if (current.appearanceOpen) current.setAppearanceOpen(false)
+        else if (current.focusMode) current.toggleFocus()
         else current.setOutlineOpen(false)
         return
       }
@@ -1047,6 +1105,15 @@ function App() {
       } else if (key === '1' || key === '2' || key === '3') {
         claim()
         current.setView(key === '1' ? 'read' : key === '2' ? 'split' : 'write')
+      } else if (key === '=' || key === '+') {
+        claim()
+        current.changeZoom(ZOOM_STEP)
+      } else if (key === '-') {
+        claim()
+        current.changeZoom(-ZOOM_STEP)
+      } else if (key === '0') {
+        claim()
+        current.resetZoom()
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -1236,6 +1303,49 @@ function App() {
               <button className={view === 'read' ? 'selected' : ''} aria-pressed={view === 'read'} onClick={() => setView('read')} aria-label="Reading view" title="Read (Ctrl+1)"><BookOpen size={16} /> <span>Read</span></button>
               <button className={view === 'split' ? 'selected' : ''} aria-pressed={view === 'split'} onClick={() => setView('split')} aria-label="Split view" title="Split (Ctrl+2)"><SplitSquareHorizontal size={16} /> <span>Split</span></button>
               <button className={view === 'write' ? 'selected' : ''} aria-pressed={view === 'write'} onClick={() => setView('write')} aria-label="Writing view" title="Write (Ctrl+3)"><PencilLine size={16} /> <span>Write</span></button>
+            </div>
+            <div className="appearance-control" ref={appearanceRef}>
+              <button
+                className="icon-button"
+                aria-label="Reading font and display zoom"
+                aria-haspopup="dialog"
+                aria-expanded={appearanceOpen}
+                title="Appearance"
+                onClick={() => setAppearanceOpen((open) => !open)}
+              >
+                <Type size={18} strokeWidth={1.7} />
+              </button>
+              {appearanceOpen && (
+                <div className="appearance-panel" role="dialog" aria-label="Appearance">
+                  <p className="appearance-heading"><Type size={15} strokeWidth={1.8} /> Appearance</p>
+                  <label className="appearance-field" htmlFor="reader-font">
+                    Reading font
+                    <select
+                      id="reader-font"
+                      value={readerFont}
+                      onChange={(event) => setReaderFont(event.target.value as ReaderFont)}
+                    >
+                      {READER_FONTS.map((font) => <option key={font.value} value={font.value}>{font.label}</option>)}
+                    </select>
+                  </label>
+                  <div className="zoom-setting">
+                    <span>Display zoom</span>
+                    <div className="zoom-stepper" role="group" aria-label="Display zoom">
+                      <button type="button" aria-label="Zoom out" title="Zoom out (Ctrl+-)" disabled={zoomLevel <= MIN_ZOOM} onClick={() => changeZoom(-ZOOM_STEP)}><Minus size={14} /></button>
+                      <output aria-live="polite">{zoomLevel}%</output>
+                      <button type="button" aria-label="Zoom in" title="Zoom in (Ctrl++)" disabled={zoomLevel >= MAX_ZOOM} onClick={() => changeZoom(ZOOM_STEP)}><Plus size={14} /></button>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="appearance-reset"
+                    disabled={readerFont === 'editorial' && zoomLevel === 100}
+                    onClick={resetAppearance}
+                  >
+                    Reset appearance
+                  </button>
+                </div>
+              )}
             </div>
             <button className="save-as-button" title="Save as (Ctrl+Shift+S)" disabled={!activeDocument} onClick={() => void saveDocument(true)}>Save as</button>
             <button className="save-button" title="Save (Ctrl+S)" disabled={!activeDocument} onClick={() => void saveDocument()}>

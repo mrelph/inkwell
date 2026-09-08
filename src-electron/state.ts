@@ -4,6 +4,8 @@ import path from 'node:path'
 
 export type RecentEntry = { path: string; name: string; openedAt: number }
 
+export type ReaderFont = 'editorial' | 'classic' | 'sans' | 'system' | 'mono'
+
 export type InkwellState = {
   /** Folder sources, in the order the user added them. */
   folders: string[]
@@ -11,12 +13,21 @@ export type InkwellState = {
   activePath?: string
   /** Once the user has opened anything of their own, the samples stop appearing. */
   introDone: boolean
+  readerFont: ReaderFont
+  zoomLevel: number
 }
 
-const EMPTY: InkwellState = { folders: [], recent: [], introDone: false }
+const EMPTY: InkwellState = {
+  folders: [],
+  recent: [],
+  introDone: false,
+  readerFont: 'editorial',
+  zoomLevel: 100
+}
 
 const MAX_FOLDERS = 8
 const MAX_RECENT = 12
+const READER_FONTS: ReaderFont[] = ['editorial', 'classic', 'sans', 'system', 'mono']
 
 const stateFile = () => path.join(app.getPath('userData'), 'library.json')
 
@@ -50,7 +61,13 @@ const sanitize = (value: unknown): InkwellState => {
     folders,
     recent,
     activePath: typeof value.activePath === 'string' ? value.activePath : undefined,
-    introDone: value.introDone === true
+    introDone: value.introDone === true,
+    readerFont: READER_FONTS.includes(value.readerFont as ReaderFont)
+      ? value.readerFont as ReaderFont
+      : 'editorial',
+    zoomLevel: typeof value.zoomLevel === 'number' && Number.isFinite(value.zoomLevel)
+      ? Math.min(140, Math.max(80, Math.round(value.zoomLevel / 10) * 10))
+      : 100
   }
 }
 

@@ -115,6 +115,7 @@ Check the current handler with `xdg-mime query default text/markdown`.
 | `Ctrl+Shift+S` | Save as |
 | `Ctrl+N` | New note |
 | `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | Read / Split / Write view |
+| `Ctrl++` / `Ctrl+-` / `Ctrl+0` | Zoom in / out / reset |
 | `Ctrl+Shift+F` | Focus writing |
 | `Ctrl+B` | Toggle the library |
 | `Ctrl+\` | Toggle the outline |

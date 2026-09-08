@@ -5,12 +5,16 @@ declare global {
 
   type RecentEntry = { path: string; name: string; openedAt: number }
 
+  type ReaderFont = 'editorial' | 'classic' | 'sans' | 'system' | 'mono'
+
   /** The remembered library: folder sources, recent files, and where you were. */
   type InkwellState = {
     folders: string[]
     recent: RecentEntry[]
     activePath?: string
     introDone: boolean
+    readerFont: ReaderFont
+    zoomLevel: number
   }
 
   /** A newer tag exists on GitHub. Null everywhere else — see src-electron/update.ts. */
@@ -36,6 +40,8 @@ declare global {
       readDocuments: (paths: string[]) => Promise<DocumentFile[]>
       loadState: () => Promise<InkwellState>
       saveState: (state: InkwellState) => void
+      /** Zooms the complete Electron renderer, including chrome and document. */
+      setZoomLevel: (percent: number) => void
       renameDocument: (payload: { path: string; name: string }) => Promise<RenameResult>
       duplicateDocument: (filePath: string) => Promise<DocumentFile | null>
       /** Moves the file to the desktop trash. Never an unlink. */

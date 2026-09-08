@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { contextBridge, ipcRenderer, webFrame, type IpcRendererEvent } from 'electron'
 
 type DocumentFile = { name: string; path: string; content: string }
 
@@ -17,6 +17,10 @@ contextBridge.exposeInMainWorld('inkwell', {
   readDocuments: (paths: string[]) => ipcRenderer.invoke('document:read', paths),
   loadState: () => ipcRenderer.invoke('state:load'),
   saveState: (state: unknown) => ipcRenderer.send('state:save', state),
+  setZoomLevel: (percent: number) => {
+    if (!Number.isFinite(percent)) return
+    webFrame.setZoomFactor(Math.min(1.4, Math.max(0.8, percent / 100)))
+  },
   renameDocument: (payload: { path: string; name: string }) => ipcRenderer.invoke('file:rename', payload),
   duplicateDocument: (filePath: string) => ipcRenderer.invoke('file:duplicate', filePath),
   trashDocument: (filePath: string) => ipcRenderer.invoke('file:trash', filePath),
