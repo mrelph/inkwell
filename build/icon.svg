@@ -1,8 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#1a292f"/>
-  <path d="M143 96h159l68 68v252H143z" fill="#fbf6ed"/>
-  <path d="M302 96v69h68" fill="#f3b66b"/>
-  <path d="M194 224h126M194 266h126M194 308h82" fill="none" stroke="#1f4042" stroke-width="19" stroke-linecap="round"/>
-  <circle cx="332" cy="334" r="47" fill="#e56d40"/>
-  <path d="M331 315v2M331 338v22" fill="none" stroke="#fff8ed" stroke-width="16" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 1254 1254">
+  <rect x="19" y="23" width="1214" height="1212" rx="231" fill="#003740"/>
+  <g fill="#fff3df">
+    <path d="M739 447q24-42 48-98l2-84q-2-21 24-35 120-69 239-120 8-3 1 7l-117 164a36 36 0 1 0 25 18l103-177q5-9 7 1-29 163-16 273-114 50-179 127-56-69-137-76z"/>
+    <path d="M672 522l25-36q10-17 31-16 72 1 123 67 13 17 2 36l-18 30z"/>
+    <path d="M405 664q-2 52-24 68-112 56-124 166l-10 118q-7 143 176 143h361q178 0 160-142l-16-137q-12-91-103-144-33-18-29-72z"/>
+  </g>
+  <path fill="#ff6942" fill-rule="evenodd" d="M361 601q0-45 85-63 72-19 162-19 106 0 176 27 56 19 56 56v36q0 61-239 61-240 0-240-61zm56-16c0 48 369 48 369 0s-369-48-369 0z"/>
+  <path fill="#003740" d="M535 756h68l-16 69h68l18-69h70l-17 69h52l-15 63h-53l-16 63h54l-16 65h-55l-17 72h-69l17-72h-68l-18 72h-69l18-72h-58l16-65h58l16-63h-58l16-63h58zm37 132-16 63h68l16-63z" fill-rule="evenodd"/>
 </svg>
