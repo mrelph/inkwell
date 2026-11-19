@@ -179,3 +179,17 @@ derivation rules. [`DESIGN.md`](DESIGN.md) governs everything that is not color.
 - `packaging/` — Arch PKGBUILD, desktop entry, and maintainer notes.
 - `scripts/` — development helpers.
 - `build/` — application icon assets.
+
+## Agent integration
+
+Open **More actions → Integrations → Enable agent**, then select an installed
+ACP provider (Codex via `codex-acp`, Claude Code via `claude-agent-acp`, or Kiro
+via `kiro-cli acp`). Inkwell discovers providers after you enable the integration
+and launches the selected one when you send a message.
+
+**Include current note** shares the open editor buffer, including unsaved edits.
+File requests through Inkwell are limited to that note. Proposed edits open a diff
+for review. **Apply once** changes the buffer as one undoable edit. Save writes
+it to disk. Providers run as your user and can have their own tools and network
+access. Stop, New session, switching notes, and disabling the integration end
+the current provider session.

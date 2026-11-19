@@ -14,6 +14,8 @@ declare global {
     activePath?: string
     introDone: boolean
     readerFont: ReaderFont
+    view: 'read' | 'split' | 'write'
+    agentEnabled: boolean
     zoomLevel: number
   }
 
@@ -30,8 +32,21 @@ declare global {
     colors: Record<string, string>
   }
 
+  type SharedNote = { id: string; name: string; path?: string; content: string }
+  type BufferRequest = { request: number; id: string; change?: string; base?: string }
+  type AgentProvider = { name: string; installed: boolean }
+
   interface Window {
     inkwell?: {
+      agent: {
+        enable: (enabled: boolean) => Promise<void>
+        providers: () => Promise<AgentProvider[]>
+        stop: () => Promise<void>
+        prompt: (input: { provider: string; text: string; note?: SharedNote }) => Promise<void>
+        onText: (listener: (text: string) => void) => () => void
+        onBuffer: (listener: (request: BufferRequest) => void) => () => void
+        reply: (id: number, text?: string) => Promise<void>
+      }
       openDocuments: () => Promise<DocumentFile[]>
       openFolder: () => Promise<{ folder: string; documents: DocumentFile[] }>
       /** Re-reads a folder Inkwell already knows about — no dialog. */

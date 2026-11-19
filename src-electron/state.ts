@@ -14,6 +14,8 @@ export type InkwellState = {
   /** Once the user has opened anything of their own, the samples stop appearing. */
   introDone: boolean
   readerFont: ReaderFont
+  view: 'read' | 'split' | 'write'
+  agentEnabled: boolean
   zoomLevel: number
 }
 
@@ -22,6 +24,8 @@ const EMPTY: InkwellState = {
   recent: [],
   introDone: false,
   readerFont: 'editorial',
+  view: 'split',
+  agentEnabled: false,
   zoomLevel: 100
 }
 
@@ -65,6 +69,8 @@ const sanitize = (value: unknown): InkwellState => {
     readerFont: READER_FONTS.includes(value.readerFont as ReaderFont)
       ? value.readerFont as ReaderFont
       : 'editorial',
+    view: value.view === 'read' || value.view === 'write' ? value.view : 'split',
+    agentEnabled: value.agentEnabled === true,
     zoomLevel: typeof value.zoomLevel === 'number' && Number.isFinite(value.zoomLevel)
       ? Math.min(140, Math.max(80, Math.round(value.zoomLevel / 10) * 10))
       : 100
@@ -83,7 +89,13 @@ export async function loadState(): Promise<InkwellState> {
 /* Written through a temporary file and renamed into place: the renderer saves on
    every library change, so a crash mid-write would otherwise be able to leave a
    truncated file that loses the whole library rather than one edit. */
-export async function saveState(next: unknown): Promise<void> {
+let pending = Promise.resolve()
+export function saveState(next: unknown) {
+  pending = pending.then(() => persistState(next))
+  return pending
+}
+
+async function persistState(next: unknown): Promise<void> {
   const target = stateFile()
   const temporary = `${target}.tmp`
   try {

@@ -1,5 +1,7 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
-import { copyFile, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises'
+import { writeDocument } from './atomicWrite'
+import { registerAgent } from './agent'
+import { copyFile, readFile, readdir, rename, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { loadState, saveState } from './state'
 import { resolveTheme, watchTheme, type ThemeTokens } from './theme'
@@ -171,6 +173,7 @@ async function createWindow() {
   })
 
   mainWindow = window
+  registerAgent(window)
 
   const developmentServer = process.env.VITE_DEV_SERVER_URL
   let allowClose = false
@@ -455,7 +458,7 @@ if (!app.requestSingleInstanceLock()) {
         }
       }
 
-      await writeFile(targetPath, payload.content, 'utf8')
+      await writeDocument(targetPath, payload.content)
       const details = await stat(targetPath)
       return { canceled: false, path: targetPath, savedAt: details.mtimeMs }
     })

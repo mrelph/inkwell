@@ -1051,3 +1051,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .app-shell.focus-mode .editor-panel textarea,
   .app-shell.focus-mode .reader-panel { padding: 20px 16px 32px; }
 }
+
+.more-tools { position: relative; }
+.more-tools summary { display: grid; place-items: center; cursor: pointer; list-style: none; }
+.tools-menu, .agent-panel, .agent-review {
+  background: var(--surface-chrome); color: var(--text-primary);
+  border: 1px solid var(--line-hairline); padding: 12px; border-radius: 8px;
+}
+.tools-menu { position: absolute; right: 0; top: 100%; z-index: 12; min-width: 155px; display: grid; gap: 8px; }
+.tools-menu button, .agent-panel button, .agent-review button { cursor: pointer; color: inherit; }
+.tools-menu strong { font-size: 12px; }
+.agent-panel { position: fixed; z-index: 15; right: 8px; top: 52px; bottom: 32px; width: min(360px, 95vw); display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+.agent-panel header { display: flex; justify-content: space-between; align-items: center; }
+.agent-panel pre { flex: 1; min-height: 2em; white-space: pre-wrap; overflow: auto; overflow-wrap: anywhere; }
+.agent-panel textarea { display: block; width: 100%; }
+.agent-review { max-width: min(680px, 90vw); }
+.agent-review pre { max-height: 56vh; overflow: auto; }

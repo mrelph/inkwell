@@ -11,6 +11,15 @@ const subscribe = <T,>(channel: string, listener: (payload: T) => void) => {
 }
 
 contextBridge.exposeInMainWorld('inkwell', {
+  agent: {
+    enable: (value: boolean) => ipcRenderer.invoke('agent:enable', value),
+    providers: () => ipcRenderer.invoke('agent:providers'),
+    stop: () => ipcRenderer.invoke('agent:stop'),
+    prompt: (input: unknown) => ipcRenderer.invoke('agent:prompt', input),
+    onText: (listener: (text: string) => void) => subscribe('agent:text', listener),
+    onBuffer: (listener: (request: unknown) => void) => subscribe('agent:buffer', listener),
+    reply: (id: number, text?: string) => ipcRenderer.invoke('agent:reply', id, text)
+  },
   openDocuments: () => ipcRenderer.invoke('document:open'),
   openFolder: () => ipcRenderer.invoke('document:open-folder'),
   readFolder: (folder: string) => ipcRenderer.invoke('document:read-folder', folder),

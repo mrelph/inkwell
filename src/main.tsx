@@ -1,4 +1,6 @@
 import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { AgentTools } from './AgentTools'
+import { flushSync } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -48,6 +50,7 @@ type MarkdownDoc = {
   /** Which group in the library this belongs to — see SAMPLES/DRAFTS/RECENT. */
   sourceId: string
   isSample?: boolean
+  revision?: number
   isDirty?: boolean
   /** mtime Inkwell last saw on disk, used to detect an external edit. */
   savedAt?: number
@@ -472,6 +475,8 @@ function App() {
   const [restored, setRestored] = useState(false)
   const [introDone, setIntroDone] = useState(false)
   const [view, setView] = useState<ViewMode>('split')
+  const [agentEnabled, setAgentEnabled] = useState(false)
+  const saving = useRef(false)
   const [query, setQuery] = useState('')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   /* Only open by default where the outline gets a real column. Below that it
@@ -550,7 +555,7 @@ function App() {
       try {
         state = await bridge.loadState()
       } catch {
-        state = { folders: [], recent: [], introDone: false, readerFont: 'editorial', zoomLevel: 100 }
+        state = { folders: [], recent: [], introDone: false, readerFont: 'editorial', zoomLevel: 100, view: 'split', agentEnabled: false }
       }
 
       const results = await Promise.all(state.folders.map(async (folder) => {
@@ -585,6 +590,8 @@ function App() {
       setFolders(liveFolders)
       setRecent(state.recent)
       setIntroDone(state.introDone || hasLibrary)
+      setView(state.view)
+      setAgentEnabled(state.agentEnabled)
       setReaderFont(state.readerFont)
       setZoomLevel(state.zoomLevel)
       setDocuments(hasLibrary ? restoredDocs : seedDocuments)
@@ -610,12 +617,12 @@ function App() {
         recent: recent.slice(0, MAX_RECENT),
         activePath: activeDocument?.path,
         introDone,
-        readerFont,
+        readerFont, view, agentEnabled,
         zoomLevel
       })
     }, 400)
     return () => window.clearTimeout(handle)
-  }, [restored, folders, recent, activeDocument?.path, introDone, readerFont, zoomLevel])
+  }, [restored, folders, recent, activeDocument?.path, introDone, readerFont, zoomLevel, view, agentEnabled])
 
   /* Typography stays a renderer concern; whole-display zoom uses Electron's
      native page zoom so chrome, editor and reader scale together. */
@@ -773,7 +780,7 @@ function App() {
 
   const updateContent = (content: string) => {
     if (!activeDocument) return
-    setDocuments((current) => current.map((doc) => doc.id === activeId ? { ...doc, content, isDirty: true } : doc))
+    setDocuments((current) => current.map((doc) => doc.id === activeId ? { ...doc, content, revision: (doc.revision ?? 0) + 1, isDirty: true } : doc))
     setNotice('Edited · not saved')
   }
 
@@ -797,6 +804,8 @@ function App() {
 
   const saveDocument = useCallback(async (forceSaveAs = false) => {
     if (!window.inkwell || !activeDocument) return
+    if (saving.current) return
+    saving.current = true
     const target = activeDocument
     try {
       const saved = await window.inkwell.saveDocument({
@@ -811,21 +820,31 @@ function App() {
       /* A draft that has just been given a path stops being a draft: it moves
          to the folder that now holds it, or to recent. */
       const sourceId = sourceForPath(savedPath)
-      setDocuments((current) => current.map((doc) => doc.id === target.id ? {
-        ...doc,
-        id: `file:${savedPath}`,
-        path: savedPath,
-        name: fileName,
-        sourceId,
-        savedAt: saved.savedAt,
-        isSample: false,
-        isDirty: false
-      } : doc))
-      setActiveId(`file:${savedPath}`)
+      const recoveredId = 'draft:' + crypto.randomUUID()
+      setDocuments((current) => current.flatMap((doc): MarkdownDoc[] => {
+        if (doc.id !== target.id) {
+          if (doc.path !== savedPath) return [doc]
+          // Preserve any unsaved work in the other open buffer as a draft.
+          return doc.isDirty ? [{ ...doc, id: recoveredId, path: undefined, sourceId: DRAFTS }] : []
+        }
+        return [{
+          ...doc,
+          id: `file:${savedPath}`,
+          path: savedPath,
+          name: fileName,
+          sourceId,
+          savedAt: saved.savedAt,
+          isSample: false,
+          isDirty: doc.revision !== target.revision
+        }]
+      }))
+      setActiveId((current) => current === target.id ? `file:${savedPath}` : current)
       if (sourceId === RECENT) rememberRecent([{ path: savedPath, name: fileName }])
-      setNotice(`Saved ${fileName}`)
+      setNotice(`Saved snapshot of ${fileName}`)
     } catch {
       setNotice('Could not save this document — try Save As again')
+    } finally {
+      saving.current = false
     }
   }, [activeDocument, rememberRecent, sourceForPath])
 
@@ -1347,6 +1366,17 @@ function App() {
                 </div>
               )}
             </div>
+            <AgentTools enabled={agentEnabled} onEnable={setAgentEnabled} note={activeDocument}
+              onSaveAs={() => void saveDocument(true)}
+              onReplace={(before, after) => {
+                if (activeDocument?.content !== before) return false
+                flushSync(() => setView('write'))
+                const editor = editorRef.current
+                if (!editor || editor.value !== before) return false
+                editor.focus()
+                editor.select()
+                return after ? document.execCommand('insertText', false, after) : document.execCommand('delete')
+              }} />
             <button className="save-as-button" title="Save as (Ctrl+Shift+S)" disabled={!activeDocument} onClick={() => void saveDocument(true)}>Save as</button>
             <button className="save-button" title="Save (Ctrl+S)" disabled={!activeDocument} onClick={() => void saveDocument()}>
               <Check size={16} strokeWidth={2} /> <span className="save-label">Save</span> <kbd>Ctrl+S</kbd>
