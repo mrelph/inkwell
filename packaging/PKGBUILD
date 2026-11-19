@@ -16,7 +16,7 @@
 # association breaks.
 pkgname=inkwell-omarchy
 _appname=inkwell
-pkgver=0.1.4
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="A calm, local-first Markdown reader and editor for Linux"
 arch=('any')
@@ -30,7 +30,7 @@ makedepends=('pnpm' 'nodejs')
 # partway through; it matches inkwell-bin's own provides=('inkwell').
 conflicts=('inkwell')
 source=("${_appname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('af7adcffa708ca70bc533612b90f32d63e1b7445dfa18934c36aa120fb52e0c0')
+sha256sums=('f833b4477a7c446ce94681c0c2cb3ee12b1b8fa9dc82a53a2be5c79b775b2a30')
 
 build() {
   cd "${srcdir}/${_appname}-${pkgver}"
@@ -75,12 +75,8 @@ package() {
   # Launcher: exec the system Electron against the installed app directory,
   # forwarding all arguments so `inkwell notes.md` opens that file.
   install -d "${pkgdir}/usr/bin"
-  if [[ -f packaging/launcher ]]; then
-    sed -e "s|@ELECTRON@|${_electron}|g" -e "s|@VERSION@|${pkgver}|g" \
+  sed -e "s|@ELECTRON@|${_electron}|g" -e "s|@VERSION@|${pkgver}|g" \
     packaging/launcher > "${pkgdir}/usr/bin/${_appname}"
-  else
-    printf '#!/bin/bash\nexec %s /usr/lib/inkwell "$@"\n' "$_electron" > "${pkgdir}/usr/bin/${_appname}"
-  fi
   chmod 755 "${pkgdir}/usr/bin/${_appname}"
 
   install -Dm644 packaging/inkwell.desktop "${pkgdir}/usr/share/applications/${_appname}.desktop"
