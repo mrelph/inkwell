@@ -1,14 +1,11 @@
+import { stageRelease } from './releaseAsset'
 import { app, net } from 'electron'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 /** What the renderer needs to draw the indicator, or null for "say nothing". */
-export type UpdateNotice = { version: string; url: string }
+export type UpdateNotice = { version: string; url: string; ready?: boolean }
 
-/* Tags, not releases. Inkwell ships as an Arch package built from a `v<x.y.z>`
-   tag and publishes no GitHub Release objects, so `/releases/latest` answers
-   404 and an indicator built on it would never appear. The tag page renders for
-   a plain tag, which is what the indicator links to. */
 const TAGS_URL = 'https://api.github.com/repos/mrelph/inkwell/tags?per_page=30'
 const TAG_PAGE = 'https://github.com/mrelph/inkwell/releases/tag/'
 
@@ -135,7 +132,7 @@ export async function knownUpdate(): Promise<UpdateNotice | null> {
  * Asks GitHub at most once a day. Resolves to null far more often than not —
  * up to date, opted out, dismissed, or unreachable — and never rejects.
  */
-export async function checkForUpdate(): Promise<UpdateNotice | null> {
+async function checkTags(): Promise<UpdateNotice | null> {
   if (disabled()) return null
   const state = await readCache()
   if (Date.now() - state.checkedAt < CHECK_EVERY) return toNotice(state)
@@ -155,4 +152,18 @@ export async function checkForUpdate(): Promise<UpdateNotice | null> {
 export async function dismissUpdate(version: unknown): Promise<void> {
   if (!parseVersion(version)) return
   await writeCache({ ...(await readCache()), dismissed: String(version) })
+}
+
+
+export async function checkForUpdate(): Promise<UpdateNotice | null> {
+  const notice = await checkTags()
+  const directory = process.env.INKWELL_RELEASE_CACHE
+  if (!notice || !directory) return notice
+  try {
+    const ready = await stageRelease(notice.version, directory, process.versions.electron.split('.')[0],
+      (url, init) => net.fetch(String(url), init))
+    return { ...notice, ready }
+  } catch {
+    return notice
+  }
 }

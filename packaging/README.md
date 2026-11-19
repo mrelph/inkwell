@@ -20,10 +20,19 @@ This builds the app from the working tree (`pnpm install --frozen-lockfile`
 resolves `makedepends`/`depends` via pacman; `-i` installs the resulting
 package after building.
 
-`source=` fetches the `v<version>` tag tarball from GitHub, so cutting a
-release means: bump `package.json`, commit, tag `v<x.y.z>`, push the tag,
-then update `pkgver` and `sha256sums` here. The checksum can only be taken
-once the tag exists, so it necessarily lands in the commit *after* the tag.
+## Publishing a version
+
+Set the next stable version in `package.json`, run `pnpm typecheck`, then
+run `pnpm release:linux` on Arch. The script builds the app once and writes
+both a bootstrap pacman package and a runtime-specific ASAR under `release/`.
+Commit the changes and create a GitHub Release with the matching `vX.Y.Z` tag.
+Upload both assets before publishing. The launcher selects the highest compatible
+version above its bundled package, so an older cache cannot override a newer
+system install. Keep published version numbers and assets immutable.
+
+After publishing, update `pkgver` and the source archive SHA-256 in the
+source PKGBUILD. A tag archive's checksum is only available after the tagged
+commit exists.
 
 ## The package name
 

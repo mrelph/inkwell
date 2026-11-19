@@ -1,0 +1,19 @@
+#!/bin/bash
+# Package upgrades take precedence over same-version or older cached app code.
+set -eu
+base='/usr/lib/inkwell'
+runtime='@ELECTRON@'
+installed='@VERSION@'
+cache="${XDG_CACHE_HOME:-$HOME/.cache}/inkwell/releases/$runtime"
+app="$base"
+if [[ -d "$cache" ]]; then
+  while read -r version; do
+    [[ "$version" != "$installed" ]] || break
+    if [[ -r "$cache/$version.asar" && -s "$cache/$version.asar" ]]; then
+      app="$cache/$version.asar"
+      break
+    fi
+  done < <({ echo "$installed"; find "$cache" -maxdepth 1 -type f -printf '%f\n' | sed -nE 's/^([0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6})\.asar$/\1/p'; } | LC_ALL=C sort -rVu)
+fi
+export INKWELL_RELEASE_CACHE="$cache"
+exec "$runtime" "$app" "$@"

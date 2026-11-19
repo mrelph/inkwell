@@ -75,14 +75,12 @@ package() {
   # Launcher: exec the system Electron against the installed app directory,
   # forwarding all arguments so `inkwell notes.md` opens that file.
   install -d "${pkgdir}/usr/bin"
-  cat > "${pkgdir}/usr/bin/${_appname}" <<'EOF'
-#!/bin/bash
-# Exec the system Electron against the installed app, forwarding arguments so
-# `inkwell notes.md` opens that file. The binary is pinned by the PKGBUILD's
-# $_electron and guaranteed present by depends=().
-exec @ELECTRON@ /usr/lib/inkwell "$@"
-EOF
-  sed -i "s|@ELECTRON@|${_electron}|" "${pkgdir}/usr/bin/${_appname}"
+  if [[ -f packaging/launcher ]]; then
+    sed -e "s|@ELECTRON@|${_electron}|g" -e "s|@VERSION@|${pkgver}|g" \
+    packaging/launcher > "${pkgdir}/usr/bin/${_appname}"
+  else
+    printf '#!/bin/bash\nexec %s /usr/lib/inkwell "$@"\n' "$_electron" > "${pkgdir}/usr/bin/${_appname}"
+  fi
   chmod 755 "${pkgdir}/usr/bin/${_appname}"
 
   install -Dm644 packaging/inkwell.desktop "${pkgdir}/usr/share/applications/${_appname}.desktop"

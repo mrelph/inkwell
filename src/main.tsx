@@ -1,6 +1,7 @@
 import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { AgentTools } from './AgentTools'
 import { flushSync } from 'react-dom'
+import { version as appVersion } from '../package.json'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -1436,7 +1437,7 @@ function App() {
                 title={`Inkwell ${update.version} is out — open its notes on GitHub`}
                 onClick={() => window.inkwell?.openUpdate?.()}
               >
-                <ArrowUpCircle size={12} strokeWidth={1.9} /> Inkwell {update.version} available
+                <ArrowUpCircle size={12} strokeWidth={1.9} /> Inkwell {update.version} {update.ready ? 'ready on next launch' : 'available'}
               </button>
               <button
                 type="button"
@@ -1449,7 +1450,7 @@ function App() {
               </button>
             </span>
           )}
-          <span className="statusbar-end statusbar-optional">Markdown · UTF-8</span>
+          <span className="statusbar-end statusbar-optional">Inkwell {appVersion} · UTF-8</span>
         </footer>
       </section>
 

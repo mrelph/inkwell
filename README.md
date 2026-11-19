@@ -71,22 +71,24 @@ yay -S inkwell-omarchy
 
 ### Updates
 
-Inkwell is not in the AUR, so nothing updates it for you. Once a day it asks
-GitHub whether a newer `v<x.y.z>` tag exists, and when there is one a quiet line
-appears at the right of the status bar: *Inkwell 0.1.3 available*. Clicking it
-opens that tag's page; the `×` beside it silences that version, and only
-something newer speaks up again.
+Starting with **0.2.0**, the Arch launcher applies compatible GitHub releases
+on the next normal launch. Inkwell checks for stable version tags daily,
+downloads the app bundle for its system Electron major, and verifies its size
+and SHA-256 against the GitHub Release asset metadata before activating it.
+The update lives under `$XDG_CACHE_HOME/inkwell/releases` (default
+`~/.cache/inkwell/releases`). Your running session stays open, and pacman
+continues to own the system installation. The status bar shows the running
+version and when an update is ready.
 
-The check sends nothing but the request itself — no document, no file name, no
-path — and it fails silently. Offline, behind a captive portal, and rate limited
-all look the same from inside the app: the line simply does not appear, and the
-next launch tries again.
+**Upgrading from 0.1.x:** install the Arch package from the
+[GitHub release](https://github.com/mrelph/inkwell/releases/latest) once using
+`sudo pacman -U ./inkwell-omarchy-0.2.0-1-any.pkg.tar.zst`. Subsequent
+compatible app updates arrive automatically. System Electron upgrades and
+launcher changes are delivered by Arch packages. Source checkouts and
+standalone AppImages display release notices only.
 
-To switch it off completely, set `INKWELL_NO_UPDATE_CHECK=1` in the environment
-Inkwell launches in.
-
-Updating is then the same `makepkg -si` in `packaging/`, once `pkgver` and
-`sha256sums` point at the new tag.
+Set `INKWELL_NO_UPDATE_CHECK=1` to stop checking and downloading. To return to
+the system-installed version, close Inkwell and remove its cached release bundles.
 
 ### Markdown file association
 

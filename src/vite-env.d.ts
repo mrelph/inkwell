@@ -20,7 +20,7 @@ declare global {
   }
 
   /** A newer tag exists on GitHub. Null everywhere else — see src-electron/update.ts. */
-  type UpdateNotice = { version: string; url: string }
+  type UpdateNotice = { version: string; url: string; ready?: boolean }
 
   type RenameResult =
     | { ok: true; path: string; name: string; savedAt?: number }

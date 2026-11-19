@@ -1,6 +1,6 @@
 {
   "name": "inkwell",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "A calm, local-first Markdown reader and editor for Linux.",
   "author": "Mark Relph",
   "license": "MIT",
@@ -13,6 +13,7 @@
     "build": "tsc -p tsconfig.electron.json && vite build --config vite.agent.config.ts && vite build",
     "preview": "pnpm build && ./scripts/electron.sh .",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "release:linux": "bash scripts/release-linux.sh",
     "package:linux": "pnpm build && electron-builder --linux AppImage"
   },
   "build": {
@@ -26,11 +27,16 @@
       "package.json"
     ],
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "category": "Utility;TextEditor;",
       "synopsis": "Local-first Markdown reader and editor",
       "maintainer": "Mark Relph",
-      "mimeTypes": ["text/markdown", "text/x-markdown"],
+      "mimeTypes": [
+        "text/markdown",
+        "text/x-markdown"
+      ],
       "desktop": {
         "entry": {
           "StartupWMClass": "inkwell",
@@ -51,6 +57,7 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@electron/asar": "3.4.1",
     "@types/node": "^22.10.1",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
