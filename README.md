@@ -51,6 +51,15 @@ pnpm build         # compile main process + build renderer
 pnpm preview       # build, then run the built app
 ```
 
+## Reading fonts
+
+Choose a reading font under **Appearance**. In addition to the bundled and
+generic choices, Inkwell lists Bookerly, Ember Modern, Roboto, Ubuntu, and
+Geist Mono. Install them through your usual Linux font setup and reopen the
+app. Unavailable choices appear disabled. If a saved font is missing, the
+reader uses Source Serif 4 and remembers the preference. Ember Modern uses
+Display for the two largest heading levels and Text for paragraphs.
+
 ## Install as a package
 
 The primary distribution target is an Arch package that depends on the system
@@ -82,7 +91,7 @@ version and when an update is ready.
 
 **Upgrading from 0.1.x:** install the Arch package from the
 [GitHub release](https://github.com/mrelph/inkwell/releases/latest) once using
-`sudo pacman -U ./inkwell-omarchy-0.2.0-1-any.pkg.tar.zst`. Subsequent
+`sudo pacman -U ./inkwell-omarchy-0.3.0-1-any.pkg.tar.zst`. Subsequent
 compatible app updates arrive automatically. System Electron upgrades and
 launcher changes are delivered by Arch packages. Source checkouts and
 standalone AppImages display release notices only.
@@ -195,3 +204,5 @@ for review. **Apply once** changes the buffer as one undoable edit. Save writes
 it to disk. Providers run as your user and can have their own tools and network
 access. Stop, New session, switching notes, and disabling the integration end
 the current provider session.
+
+With the agent enabled, Ctrl+Alt+A toggles its panel.

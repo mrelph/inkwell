@@ -76,8 +76,13 @@ const MIN_ZOOM = 80
 const MAX_ZOOM = 140
 const ZOOM_STEP = 10
 
-const READER_FONTS: { value: ReaderFont; label: string }[] = [
+const READER_FONTS: { value: ReaderFont; label: string; families?: string[] }[] = [
   { value: 'editorial', label: 'Editorial serif' },
+  { value: 'bookerly', label: 'Bookerly', families: ['Bookerly'] },
+  { value: 'ember', label: 'Ember Modern', families: ['Ember Modern Text', 'Ember Modern Display'] },
+  { value: 'roboto', label: 'Roboto', families: ['Roboto'] },
+  { value: 'ubuntu', label: 'Ubuntu', families: ['Ubuntu'] },
+  { value: 'geist-mono', label: 'Geist Mono', families: ['Geist Mono'] },
   { value: 'classic', label: 'Classic serif' },
   { value: 'sans', label: 'Manrope sans' },
   { value: 'system', label: 'System sans' },
@@ -486,6 +491,9 @@ function App() {
     () => !window.matchMedia('(max-width: 1120px)').matches
   )
   const [focusMode, setFocusMode] = useState(false)
+  const [installedFonts, setInstalledFonts] = useState<string[]>([])
+  useEffect(() => { void window.inkwell?.listFonts().then(setInstalledFonts) }, [])
+  const available = (font: typeof READER_FONTS[number]) => font.families?.every(name => installedFonts.includes(name)) ?? true
   const [readerFont, setReaderFont] = useState<ReaderFont>('editorial')
   const [zoomLevel, setZoomLevel] = useState(100)
   const [appearanceOpen, setAppearanceOpen] = useState(false)
@@ -627,9 +635,10 @@ function App() {
 
   /* Typography stays a renderer concern; whole-display zoom uses Electron's
      native page zoom so chrome, editor and reader scale together. */
+  const effectiveFont = READER_FONTS.some(font => font.value === readerFont && available(font)) ? readerFont : 'editorial'
   useEffect(() => {
-    document.documentElement.dataset.readerFont = readerFont
-  }, [readerFont])
+    document.documentElement.dataset.readerFont = effectiveFont
+  }, [effectiveFont])
 
   useEffect(() => {
     window.inkwell?.setZoomLevel?.(zoomLevel)
@@ -1345,7 +1354,7 @@ function App() {
                       value={readerFont}
                       onChange={(event) => setReaderFont(event.target.value as ReaderFont)}
                     >
-                      {READER_FONTS.map((font) => <option key={font.value} value={font.value}>{font.label}</option>)}
+                      {READER_FONTS.map((font) => <option key={font.value} value={font.value} disabled={!available(font)}>{font.label}{available(font) ? '' : ' (not installed)'}</option>)}
                     </select>
                   </label>
                   <div className="zoom-setting">

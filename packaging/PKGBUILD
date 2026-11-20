@@ -81,6 +81,5 @@ package() {
 
   install -Dm644 packaging/inkwell.desktop "${pkgdir}/usr/share/applications/${_appname}.desktop"
   install -Dm644 build/icon.png "${pkgdir}/usr/share/icons/hicolor/512x512/apps/${_appname}.png"
-  install -Dm644 build/icon.svg "${pkgdir}/usr/share/icons/hicolor/scalable/apps/${_appname}.svg"
   install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }

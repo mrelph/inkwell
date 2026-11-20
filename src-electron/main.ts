@@ -2,6 +2,8 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { writeDocument } from './atomicWrite'
 import { registerAgent } from './agent'
 import { copyFile, readFile, readdir, rename, stat } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import path from 'node:path'
 import { loadState, saveState } from './state'
 import { resolveTheme, watchTheme, type ThemeTokens } from './theme'
@@ -257,6 +259,10 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(() => {
+    const fontFamilies = promisify(execFile)('fc-list', ['--format=%{family}\n'])
+      .then(({ stdout }) => [...new Set(stdout.split(/[,\n]/).map(name => name.trim()).filter(Boolean))])
+      .catch(() => [])
+    ipcMain.handle('fonts:list', () => fontFamilies)
     ipcMain.handle('theme:get', async () => toThemePayload(await resolveTheme()))
 
     ipcMain.handle('document:confirm-discard', async (_event, names: string) => {

@@ -44,6 +44,12 @@
 }
 
 :root[data-theme-mode='dark'] { color-scheme: dark; }
+:root[data-reader-font='bookerly'] { --font-reader: 'Bookerly', 'Source Serif 4', serif; }
+:root[data-reader-font='ember'] { --font-reader: 'Ember Modern Text', 'Source Serif 4', serif; }
+:root[data-reader-font='roboto'] { --font-reader: 'Roboto', 'Source Serif 4', serif; }
+:root[data-reader-font='ubuntu'] { --font-reader: 'Ubuntu', 'Source Serif 4', serif; }
+:root[data-reader-font='geist-mono'] { --font-reader: 'Geist Mono', 'Source Serif 4', serif; }
+:root[data-reader-font='ember'] .markdown-prose :is(h1, h2) { font-family: 'Ember Modern Display', var(--font-reader); }
 :root[data-reader-font='classic'] { --font-reader: Georgia, 'Times New Roman', serif; }
 :root[data-reader-font='sans'] { --font-reader: 'Manrope Variable', Manrope, sans-serif; }
 :root[data-reader-font='system'] { --font-reader: system-ui, sans-serif; }
