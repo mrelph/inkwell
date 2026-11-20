@@ -193,7 +193,7 @@ derivation rules. [`DESIGN.md`](DESIGN.md) governs everything that is not color.
 
 ## Agent integration
 
-Open **More actions → Integrations → Enable agent**, then select an installed
+Open **Settings and commands → Enable agent**, then select an installed
 ACP provider (Codex via `codex-acp`, Claude Code via `claude-agent-acp`, or Kiro
 via `kiro-cli acp`). Inkwell discovers providers after you enable the integration
 and launches the selected one when you send a message.
@@ -206,3 +206,5 @@ access. Stop, New session, switching notes, and disabling the integration end
 the current provider session.
 
 With the agent enabled, Ctrl+Alt+A toggles its panel.
+
+Press F10 or choose **Settings and commands → All menu commands** for the native File, Edit, View, Integrations, and Help menus. In narrow tiles, the view selector folds into a single button.

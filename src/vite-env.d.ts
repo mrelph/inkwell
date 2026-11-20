@@ -74,6 +74,8 @@ declare global {
       saveDocument: (payload: { content: string; path?: string; forceSaveAs?: boolean; knownMtime?: number }) => Promise<{ canceled: boolean; path?: string; savedAt?: number }>
       setDirty: (isDirty: boolean) => void
       /** Resolves the active Omarchy theme, or the default palette off Omarchy. */
+      popupCommands: (state: { enabled: boolean; hasNote: boolean; view: string }) => Promise<void>
+      onCommand: (listener: (id: string) => void) => () => void
       listFonts: () => Promise<string[]>
       getTheme: () => Promise<ThemePayload>
       /** Subscribes to theme switches; returns an unsubscribe function. */

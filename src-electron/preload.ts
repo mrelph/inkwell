@@ -43,6 +43,8 @@ contextBridge.exposeInMainWorld('inkwell', {
   saveDocument: (payload: { content: string; path?: string; forceSaveAs?: boolean; knownMtime?: number }) => ipcRenderer.invoke('document:save', payload),
   setDirty: (isDirty: boolean) => ipcRenderer.send('document:set-dirty', isDirty),
   confirmDiscard: (names: string) => ipcRenderer.invoke('document:confirm-discard', names),
+  popupCommands: (state: unknown) => ipcRenderer.invoke('commands:popup', state),
+  onCommand: (listener: (id: string) => void) => subscribe('commands:selected', listener),
   listFonts: () => ipcRenderer.invoke('fonts:list'),
   getTheme: () => ipcRenderer.invoke('theme:get'),
   onThemeChange: (listener: (theme: unknown) => void) => subscribe('theme:changed', listener),
