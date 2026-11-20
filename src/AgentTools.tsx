@@ -16,6 +16,17 @@ export function AgentTools(props: Props) {
   const api = window.inkwell?.agent
   const menu = useRef<HTMLDetailsElement>(null)
   const [panel, setPanel] = useState(false)
+  useEffect(() => {
+    if (!enabled) return
+    const toggle = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.altKey && !event.shiftKey && event.code === 'KeyA') {
+        event.preventDefault()
+        setPanel(open => !open)
+      }
+    }
+    window.addEventListener('keydown', toggle)
+    return () => window.removeEventListener('keydown', toggle)
+  }, [enabled])
   const [providers, setProviders] = useState<AgentProvider[]>([])
   const [provider, setProvider] = useState('')
   const [share, setShare] = useState(false)

@@ -5,7 +5,7 @@ declare global {
 
   type RecentEntry = { path: string; name: string; openedAt: number }
 
-  type ReaderFont = 'editorial' | 'classic' | 'sans' | 'system' | 'mono'
+  type ReaderFont = 'editorial' | 'classic' | 'sans' | 'system' | 'mono' | 'bookerly' | 'ember' | 'roboto' | 'ubuntu' | 'geist-mono'
 
   /** The remembered library: folder sources, recent files, and where you were. */
   type InkwellState = {
@@ -74,6 +74,7 @@ declare global {
       saveDocument: (payload: { content: string; path?: string; forceSaveAs?: boolean; knownMtime?: number }) => Promise<{ canceled: boolean; path?: string; savedAt?: number }>
       setDirty: (isDirty: boolean) => void
       /** Resolves the active Omarchy theme, or the default palette off Omarchy. */
+      listFonts: () => Promise<string[]>
       getTheme: () => Promise<ThemePayload>
       /** Subscribes to theme switches; returns an unsubscribe function. */
       onThemeChange: (listener: (theme: ThemePayload) => void) => () => void

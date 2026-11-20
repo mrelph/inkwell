@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('inkwell', {
   saveDocument: (payload: { content: string; path?: string; forceSaveAs?: boolean; knownMtime?: number }) => ipcRenderer.invoke('document:save', payload),
   setDirty: (isDirty: boolean) => ipcRenderer.send('document:set-dirty', isDirty),
   confirmDiscard: (names: string) => ipcRenderer.invoke('document:confirm-discard', names),
+  listFonts: () => ipcRenderer.invoke('fonts:list'),
   getTheme: () => ipcRenderer.invoke('theme:get'),
   onThemeChange: (listener: (theme: unknown) => void) => subscribe('theme:changed', listener),
   onOpenExternal: (listener: (documents: DocumentFile[]) => void) => subscribe('document:opened-externally', listener)

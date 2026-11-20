@@ -4,7 +4,7 @@ import path from 'node:path'
 
 export type RecentEntry = { path: string; name: string; openedAt: number }
 
-export type ReaderFont = 'editorial' | 'classic' | 'sans' | 'system' | 'mono'
+export type ReaderFont = 'editorial' | 'classic' | 'sans' | 'system' | 'mono' | 'bookerly' | 'ember' | 'roboto' | 'ubuntu' | 'geist-mono'
 
 export type InkwellState = {
   /** Folder sources, in the order the user added them. */
@@ -31,7 +31,7 @@ const EMPTY: InkwellState = {
 
 const MAX_FOLDERS = 8
 const MAX_RECENT = 12
-const READER_FONTS: ReaderFont[] = ['editorial', 'classic', 'sans', 'system', 'mono']
+const READER_FONTS: ReaderFont[] = ['editorial', 'classic', 'sans', 'system', 'mono', 'bookerly', 'ember', 'roboto', 'ubuntu', 'geist-mono']
 
 const stateFile = () => path.join(app.getPath('userData'), 'library.json')
 
