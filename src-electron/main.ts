@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, Menu, clipboard, dialog, ipcMain, shell } from 'electron'
 import { writeDocument } from './atomicWrite'
 import { registerAgent } from './agent'
 import { copyFile, readFile, readdir, rename, stat } from 'node:fs/promises'
@@ -262,6 +262,29 @@ if (!app.requestSingleInstanceLock()) {
     const fontFamilies = promisify(execFile)('fc-list', ['--format=%{family}\n'])
       .then(({ stdout }) => [...new Set(stdout.split(/[,\n]/).map(name => name.trim()).filter(Boolean))])
       .catch(() => [])
+    ipcMain.handle('commands:popup', (event, state) => {
+      const window = BrowserWindow.fromWebContents(event.sender)
+      if (!window || event.senderFrame !== event.sender.mainFrame) return
+      const action = (label: string, id: string, enabled = true): Electron.MenuItemConstructorOptions => ({
+        label, enabled, click: () => event.sender.send('commands:selected', id)
+      })
+      Menu.buildFromTemplate([
+        { label: 'File', submenu: [action('New note', 'new'), action('Open files…', 'open'), action('Add folder…', 'folder'),
+          action('Save', 'save', !!state.hasNote), action('Save as…', 'saveAs', !!state.hasNote)] },
+        { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+          { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
+        { label: 'View', submenu: [
+          ...['read', 'split', 'write'].map(id => ({ ...action(id[0].toUpperCase() + id.slice(1), id),
+            type: 'radio' as const, checked: state.view === id })),
+          { type: 'separator' }, action('Reading font and zoom…', 'appearance'), action('Toggle library', 'library'),
+          action('Toggle outline', 'outline'), action('Toggle focus mode', 'focus')] },
+        { label: 'Integrations', submenu: [{ ...action('Enable agent', 'enableAgent'), type: 'checkbox', checked: !!state.enabled },
+          action('Toggle agent panel', 'panel', !!state.enabled)] },
+        { label: 'Help', submenu: [{ label: 'About Inkwell', click: () => {
+          void dialog.showMessageBox(window, { message: 'Inkwell ' + app.getVersion(), detail: 'A local-first Markdown reader and editor.' })
+        } }] }
+      ]).popup({ window })
+    })
     ipcMain.handle('fonts:list', () => fontFamilies)
     ipcMain.handle('theme:get', async () => toThemePayload(await resolveTheme()))
 

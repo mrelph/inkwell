@@ -1,4 +1,5 @@
 import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { HeaderMenu } from './HeaderMenu'
 import { AgentTools } from './AgentTools'
 import { flushSync } from 'react-dom'
 import { version as appVersion } from '../package.json'
@@ -1328,6 +1329,12 @@ function App() {
             </div>
           </div>
           <div className="document-tools">
+            <HeaderMenu className="compact-views view-menu" label="Document view options" title="Document view"
+              trigger={<>{view === 'read' ? <BookOpen size={16} /> : view === 'write' ? <PencilLine size={16} /> : <SplitSquareHorizontal size={16} />}<ChevronDown size={12} /></>}
+              items={(['read', 'split', 'write'] as const).map((mode, index) => ({
+                key: mode, label: mode[0].toUpperCase() + mode.slice(1), hint: 'Ctrl+' + (index + 1),
+                checked: view === mode, onSelect: () => setView(mode)
+              }))} />
             <div className="view-switcher" role="group" aria-label="Document view">
               <button className={view === 'read' ? 'selected' : ''} aria-pressed={view === 'read'} onClick={() => setView('read')} aria-label="Reading view" title="Read (Ctrl+1)"><BookOpen size={16} /> <span>Read</span></button>
               <button className={view === 'split' ? 'selected' : ''} aria-pressed={view === 'split'} onClick={() => setView('split')} aria-label="Split view" title="Split (Ctrl+2)"><SplitSquareHorizontal size={16} /> <span>Split</span></button>
@@ -1377,7 +1384,18 @@ function App() {
               )}
             </div>
             <AgentTools enabled={agentEnabled} onEnable={setAgentEnabled} note={activeDocument}
-              onSaveAs={() => void saveDocument(true)}
+              view={view} otherCommands={{
+                save: () => void saveDocument(), read: () => setView('read'), split: () => setView('split'),
+                write: () => setView('write'), library: () => setSidebarOpen(value => !value),
+                outline: () => setOutlineOpen(value => !value)
+              }} commands={[
+                { key: 'new', label: 'New note', hint: 'Ctrl+N', onSelect: createDocument },
+                { key: 'open', label: 'Open files…', hint: 'Ctrl+O', onSelect: openFiles },
+                { key: 'folder', label: 'Add folder…', hint: 'Ctrl+Shift+O', onSelect: addFolder },
+                { key: 'saveAs', label: 'Save as…', disabled: !activeDocument, hint: 'Ctrl+Shift+S', onSelect: () => void saveDocument(true) },
+                { key: 'appearance', label: 'Reading font and zoom…', separated: true, onSelect: () => setAppearanceOpen(true) },
+                { key: 'focus', label: focusMode ? 'Leave focus mode' : 'Focus mode', hint: 'Ctrl+Shift+F', onSelect: toggleFocus }
+              ]}
               onReplace={(before, after) => {
                 if (activeDocument?.content !== before) return false
                 flushSync(() => setView('write'))
@@ -1396,7 +1414,7 @@ function App() {
                 <button className="icon-button outline-toggle" aria-label={outlineOpen ? 'Hide outline' : 'Show outline'} aria-expanded={outlineOpen} title="Outline (Ctrl+\)" onClick={() => setOutlineOpen((open) => !open)}>
                   {outlineOpen ? <PanelRightClose size={18} strokeWidth={1.7} /> : <PanelRightOpen size={18} strokeWidth={1.7} />}
                 </button>
-                <button className="icon-button" aria-label="Focus mode" title="Focus mode (Ctrl+Shift+F)" onClick={toggleFocus}>
+                <button className="icon-button focus-toggle" aria-label="Focus mode" title="Focus mode (Ctrl+Shift+F)" onClick={toggleFocus}>
                   <Maximize2 size={18} strokeWidth={1.7} />
                 </button>
               </>

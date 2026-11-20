@@ -1,12 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Ellipsis, X } from 'lucide-react'
+import { HeaderMenu, type MenuItem } from './HeaderMenu'
+import { Settings, Bot, X } from 'lucide-react'
 import { createTwoFilesPatch } from 'diff'
 
 type Props = {
   enabled: boolean
   onEnable: (value: boolean) => void
-  onSaveAs: () => void
+  view: string
+  otherCommands: Record<string, () => void>
+  commands: MenuItem[]
   note?: SharedNote
   onReplace: (before: string, after: string) => boolean
 }
@@ -14,7 +17,6 @@ type Props = {
 export function AgentTools(props: Props) {
   const { enabled, note, onEnable } = props
   const api = window.inkwell?.agent
-  const menu = useRef<HTMLDetailsElement>(null)
   const [panel, setPanel] = useState(false)
   useEffect(() => {
     if (!enabled) return
@@ -85,15 +87,6 @@ export function AgentTools(props: Props) {
   useEffect(() => {
     if (proposal) dialog.current?.showModal()
   }, [proposal])
-  useEffect(() => {
-    if (!menu.current) return
-    const close = (event: Event) => {
-      if (menu.current && !menu.current.contains(event.target as Node)) menu.current.open = false
-    }
-    document.addEventListener('pointerdown', close)
-    return () => document.removeEventListener('pointerdown', close)
-  }, [])
-
   function review(allow: boolean) {
     if (!proposal || !api) return
     dialog.current?.close()
@@ -118,21 +111,33 @@ export function AgentTools(props: Props) {
       if (version.current === turn) setBusy(false)
     }
   }
-  function closeMenu() { if (menu.current) menu.current.open = false }
+  function popupCommands() {
+    void window.inkwell?.popupCommands({ enabled, hasNote: !!note, view: props.view })
+  }
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'F10' && !event.shiftKey && !event.repeat && !document.querySelector('dialog[open]')) {
+        event.preventDefault()
+        popupCommands()
+      }
+    }
+    window.addEventListener('keydown', keydown)
+    const off = window.inkwell?.onCommand(id => {
+      if (id === 'enableAgent') { onEnable(!enabled); setPanel(!enabled) }
+      else if (id === 'panel') setPanel(value => !value)
+      else (props.commands.find(command => command.key === id)?.onSelect ?? props.otherCommands[id])?.()
+    })
+    return () => { window.removeEventListener('keydown', keydown); off?.() }
+  }, [props, enabled, note, onEnable])
   return <>
-    <details ref={menu} className="more-tools" onKeyDown={event => {
-      if (event.key === 'Escape') { closeMenu(); menu.current?.querySelector('summary')?.focus(); event.stopPropagation() }
-    }}>
-      <summary className="icon-button" aria-label="More actions" title="More actions"><Ellipsis size={17} /></summary>
-      <div className="tools-menu">
-        <button disabled={!note} onClick={() => { closeMenu(); props.onSaveAs() }}>Save as…</button>
-        <strong>Integrations</strong>
-        <label><input type="checkbox" checked={enabled} onChange={event => {
-          onEnable(event.target.checked); setPanel(event.target.checked); closeMenu()
-        }} /> Enable agent</label>
-        {enabled && <button onClick={() => { setPanel(!panel); closeMenu() }}>{panel ? 'Hide' : 'Show'} agent panel</button>}
-      </div>
-    </details>
+    {enabled && <button className="icon-button" title="Agent (Ctrl+Alt+A)" aria-label="Agent panel" aria-expanded={panel}
+      onClick={() => setPanel(open => !open)}><Bot size={17} /></button>}
+    <HeaderMenu label="Settings and commands" title="Settings and commands" trigger={<Settings size={17} />} items={[
+      ...props.commands,
+      { key: 'enableAgent', label: 'Enable agent', checked: enabled, toggle: true, separated: true,
+        onSelect: () => { onEnable(!enabled); setPanel(!enabled) } },
+      { key: 'all', label: 'All menu commands…', hint: 'F10', separated: true, onSelect: popupCommands }
+    ]} />
     {enabled && panel && createPortal(<aside className="agent-panel" aria-label="Agent panel">
       <header><strong>Agent</strong><button className="icon-button" aria-label="Hide agent panel" onClick={() => setPanel(false)}><X size={16} /></button></header>
       <label>Provider <select disabled={busy} value={provider} onChange={e => setProvider(e.target.value)}>
