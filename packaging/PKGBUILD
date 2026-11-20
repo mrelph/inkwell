@@ -16,7 +16,7 @@
 # association breaks.
 pkgname=inkwell-omarchy
 _appname=inkwell
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc="A calm, local-first Markdown reader and editor for Linux"
 arch=('any')
@@ -30,7 +30,7 @@ makedepends=('pnpm' 'nodejs')
 # partway through; it matches inkwell-bin's own provides=('inkwell').
 conflicts=('inkwell')
 source=("${_appname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
-sha256sums=('f833b4477a7c446ce94681c0c2cb3ee12b1b8fa9dc82a53a2be5c79b775b2a30')
+sha256sums=('2429ea84ed9ddc91a6304e57c38f526cfa7fabf0f5a1ddae64026dc25663f018')
 
 build() {
   cd "${srcdir}/${_appname}-${pkgver}"
